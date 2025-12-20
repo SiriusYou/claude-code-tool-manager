@@ -39,17 +39,34 @@ pub async fn list_mcp_registry(
     limit: Option<u32>,
     cursor: Option<String>,
 ) -> Result<RegistrySearchResult, String> {
+    log::info!("[Registry] list_mcp_registry called, limit: {:?}, cursor: {:?}", limit, cursor);
+
     let client = RegistryClient::new();
 
     let (servers, next_cursor) = client
         .list(limit.unwrap_or(20), cursor.as_deref())
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            log::error!("[Registry] Failed to fetch from registry: {}", e);
+            e.to_string()
+        })?;
+
+    log::info!("[Registry] Got {} servers from API", servers.len());
 
     let entries: Vec<RegistryMcpEntry> = servers
         .iter()
-        .filter_map(|s| s.to_mcp_entry().ok())
+        .filter_map(|s| {
+            match s.to_mcp_entry() {
+                Ok(entry) => Some(entry),
+                Err(e) => {
+                    log::warn!("[Registry] Failed to convert server '{}': {}", s.name, e);
+                    None
+                }
+            }
+        })
         .collect();
+
+    log::info!("[Registry] Converted {} servers to MCP entries", entries.len());
 
     Ok(RegistrySearchResult {
         entries,

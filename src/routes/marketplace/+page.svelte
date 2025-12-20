@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { invoke } from '@tauri-apps/api/core';
+	import { onMount } from 'svelte';
 	import { Header } from '$lib/components/layout';
 	import { repoLibrary, notifications } from '$lib/stores';
 	import {
@@ -35,16 +36,13 @@
 	let selectedRegistryMcp = $state<RegistryMcpEntry | null>(null);
 	let isImportingMcp = $state(false);
 
-	// Load data on mount and auto-sync if no items
-	$effect(() => {
+	// Load data on mount
+	onMount(() => {
+		console.log('[Marketplace] onMount - loading data');
 		loadData();
-	});
-
-	// Load MCP Registry when switching to MCPs tab
-	$effect(() => {
-		if (activeTab === 'mcps' && repoLibrary.registryMcps.length === 0 && !repoLibrary.isSearchingRegistry) {
-			repoLibrary.loadRegistryMcps();
-		}
+		// Load MCP Registry immediately since MCPs is the default tab
+		console.log('[Marketplace] Loading MCP registry...');
+		repoLibrary.loadRegistryMcps();
 	});
 
 	async function loadData() {
@@ -220,16 +218,6 @@
 </Header>
 
 <div class="flex-1 overflow-auto p-6">
-	<!-- Rate Limit Info -->
-	{#if repoLibrary.rateLimitInfo}
-		<div class="mb-4 flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-			<Github class="w-4 h-4" />
-			<span>
-				GitHub API: {repoLibrary.rateLimitInfo.remaining}/{repoLibrary.rateLimitInfo.limit} requests remaining
-			</span>
-		</div>
-	{/if}
-
 	<!-- Tabs -->
 	<div class="flex border-b border-gray-200 dark:border-gray-700 mb-6">
 		<button

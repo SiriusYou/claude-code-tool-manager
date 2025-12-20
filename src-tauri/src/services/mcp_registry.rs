@@ -38,12 +38,17 @@ pub struct RegistryServer {
     pub version: Option<String>,
     pub packages: Option<Vec<Package>>,
     pub remotes: Option<Vec<Remote>>,
+    // Catch-all for unknown fields (like $schema, icons, title, etc.)
+    #[serde(flatten)]
+    pub extra: Option<HashMap<String, serde_json::Value>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct RepositoryInfo {
     pub url: Option<String>,
     pub source: Option<String>,
+    #[serde(flatten)]
+    pub extra: Option<HashMap<String, serde_json::Value>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -55,6 +60,16 @@ pub struct Package {
     pub version: Option<String>,
     pub arguments: Option<Vec<PackageArgument>>,
     pub environment_variables: Option<Vec<EnvironmentVariable>>,
+    pub transport: Option<Transport>,
+    // Catch-all for unknown fields
+    #[serde(flatten)]
+    pub extra: Option<HashMap<String, serde_json::Value>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Transport {
+    #[serde(rename = "type")]
+    pub transport_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -77,6 +92,9 @@ pub struct EnvironmentVariable {
     pub is_required: Option<bool>,
     pub is_secret: Option<bool>,
     pub default: Option<String>,
+    pub format: Option<String>,
+    #[serde(flatten)]
+    pub extra: Option<HashMap<String, serde_json::Value>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -85,6 +103,8 @@ pub struct Remote {
     pub transport_type: String, // "sse", "http", "streamable-http"
     pub url: String,
     pub headers: Option<HashMap<String, String>>,
+    #[serde(flatten)]
+    pub extra: Option<HashMap<String, serde_json::Value>>,
 }
 
 // ============================================================================
