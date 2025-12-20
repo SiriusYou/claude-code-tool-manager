@@ -2,8 +2,11 @@
 	import { Header } from '$lib/components/layout';
 	import { GlobalSettings } from '$lib/components/global';
 	import { invoke } from '@tauri-apps/api/core';
-	import { notifications } from '$lib/stores';
-	import { FolderOpen, FileText, RefreshCw } from 'lucide-svelte';
+	import { notifications, whatsNew } from '$lib/stores';
+	import { FolderOpen, FileText, RefreshCw, Sparkles } from 'lucide-svelte';
+	import { getVersion } from '@tauri-apps/api/app';
+
+	let appVersion = $state('');
 
 	interface ClaudePaths {
 		claudeDir: string;
@@ -39,10 +42,15 @@
 		}
 	}
 
-	// Load paths on mount
+	// Load paths and version on mount
 	$effect(() => {
 		loadPaths();
+		getVersion().then(v => appVersion = v).catch(() => appVersion = '');
 	});
+
+	function viewReleaseNotes() {
+		whatsNew.showCurrentReleaseNotes();
+	}
 </script>
 
 <Header
@@ -112,5 +120,26 @@
 			<RefreshCw class="w-4 h-4 mr-2" />
 			Create Backup
 		</button>
+	</div>
+
+	<!-- About -->
+	<div class="card">
+		<h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">About</h3>
+		<div class="flex items-center justify-between">
+			<div>
+				<p class="text-sm font-medium text-gray-900 dark:text-white">
+					Claude Code Tool Manager
+				</p>
+				{#if appVersion}
+					<p class="text-sm text-gray-500 dark:text-gray-400">
+						Version {appVersion}
+					</p>
+				{/if}
+			</div>
+			<button onclick={viewReleaseNotes} class="btn btn-secondary">
+				<Sparkles class="w-4 h-4 mr-2" />
+				What's New
+			</button>
+		</div>
 	</div>
 </div>

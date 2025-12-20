@@ -4,7 +4,8 @@
 	import { Sidebar } from '$lib/components/layout';
 	import { Toast } from '$lib/components/shared';
 	import UpdateNotification from '$lib/components/shared/UpdateNotification.svelte';
-	import { mcpLibrary, projectsStore, skillLibrary, subagentLibrary } from '$lib/stores';
+	import WhatsNewModal from '$lib/components/shared/WhatsNewModal.svelte';
+	import { mcpLibrary, projectsStore, skillLibrary, subagentLibrary, whatsNew } from '$lib/stores';
 
 	let { children } = $props();
 
@@ -19,6 +20,11 @@
 			subagentLibrary.load(),
 			subagentLibrary.loadGlobalSubAgents()
 		]);
+
+		// Check for "What's New" after update (with delay to not block startup)
+		setTimeout(() => {
+			whatsNew.checkForWhatsNew();
+		}, 1500);
 	});
 </script>
 
@@ -32,3 +38,4 @@
 
 <Toast />
 <UpdateNotification />
+<WhatsNewModal />
