@@ -14,6 +14,18 @@ import { mcpLibrary } from './mcpLibrary.svelte';
 import { skillLibrary } from './skillLibrary.svelte';
 import { subagentLibrary } from './subagentLibrary.svelte';
 
+// Helper to deduplicate MCPs by registryId
+function deduplicateMcps(mcps: RegistryMcpEntry[]): RegistryMcpEntry[] {
+	const seen = new Set<string>();
+	return mcps.filter((mcp) => {
+		if (seen.has(mcp.registryId)) {
+			return false;
+		}
+		seen.add(mcp.registryId);
+		return true;
+	});
+}
+
 class RepoLibraryState {
 	repos = $state<Repo[]>([]);
 	items = $state<RepoItem[]>([]);
@@ -206,10 +218,11 @@ class RepoLibraryState {
 		this.registryError = null;
 		this.registrySearchQuery = query;
 		try {
-			this.registryMcps = await invoke<RegistryMcpEntry[]>('search_mcp_registry', {
+			const results = await invoke<RegistryMcpEntry[]>('search_mcp_registry', {
 				query,
 				limit: 50
 			});
+			this.registryMcps = deduplicateMcps(results);
 			this.registryNextCursor = null;
 		} catch (e) {
 			this.registryError = String(e);
@@ -228,9 +241,10 @@ class RepoLibraryState {
 				cursor: loadMore ? this.registryNextCursor : null
 			});
 			if (loadMore) {
-				this.registryMcps = [...this.registryMcps, ...result.entries];
+				// Deduplicate when adding more entries
+				this.registryMcps = deduplicateMcps([...this.registryMcps, ...result.entries]);
 			} else {
-				this.registryMcps = result.entries;
+				this.registryMcps = deduplicateMcps(result.entries);
 			}
 			this.registryNextCursor = result.nextCursor ?? null;
 		} catch (e) {
