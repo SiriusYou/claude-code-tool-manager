@@ -193,9 +193,34 @@ impl RegistryClient {
             return Err(anyhow!("Registry API error {}: {}", status, text));
         }
 
-        let registry_response: RegistryResponse = response.json().await?;
-        // Unwrap servers from the wrapper
-        let servers = registry_response.servers.into_iter().map(|w| w.server).collect();
+        // Parse as dynamic JSON to filter for only latest versions
+        let json: serde_json::Value = response.json().await?;
+        let servers_array = json
+            .get("servers")
+            .and_then(|s| s.as_array())
+            .ok_or_else(|| anyhow!("No servers array in response"))?;
+
+        let mut servers = Vec::new();
+        for item in servers_array {
+            // Check if this is the latest version
+            let is_latest = item
+                .get("_meta")
+                .and_then(|m| m.get("io.modelcontextprotocol.registry/official"))
+                .and_then(|o| o.get("isLatest"))
+                .and_then(|l| l.as_bool())
+                .unwrap_or(false);
+
+            if !is_latest {
+                continue;
+            }
+
+            if let Some(server_obj) = item.get("server") {
+                if let Ok(server) = serde_json::from_value::<RegistryServer>(server_obj.clone()) {
+                    servers.push(server);
+                }
+            }
+        }
+
         Ok(servers)
     }
 
@@ -243,10 +268,24 @@ impl RegistryClient {
 
         log::info!("[Registry] Found {} servers in response", servers_array.len());
 
-        // Parse each server dynamically
+        // Parse each server dynamically, filtering for only latest versions
         let mut servers = Vec::new();
+        let mut skipped_old_versions = 0;
         for item in servers_array {
             // Each item has { server: {...}, _meta: {...} }
+            // Check if this is the latest version
+            let is_latest = item
+                .get("_meta")
+                .and_then(|m| m.get("io.modelcontextprotocol.registry/official"))
+                .and_then(|o| o.get("isLatest"))
+                .and_then(|l| l.as_bool())
+                .unwrap_or(false);
+
+            if !is_latest {
+                skipped_old_versions += 1;
+                continue;
+            }
+
             if let Some(server_obj) = item.get("server") {
                 match serde_json::from_value::<RegistryServer>(server_obj.clone()) {
                     Ok(server) => servers.push(server),
@@ -259,7 +298,7 @@ impl RegistryClient {
             }
         }
 
-        log::info!("[Registry] Successfully parsed {} servers", servers.len());
+        log::info!("[Registry] Parsed {} servers ({} old versions skipped)", servers.len(), skipped_old_versions);
 
         Ok((servers, next_cursor))
     }
@@ -304,6 +343,13 @@ impl Default for RegistryClient {
 impl RegistryServer {
     /// Convert a registry server to an MCP entry for the app
     pub fn to_mcp_entry(&self) -> Result<RegistryMcpEntry> {
+        log::debug!(
+            "[Registry] Converting '{}': packages={:?}, remotes={:?}",
+            self.name,
+            self.packages.as_ref().map(|p| p.len()),
+            self.remotes.as_ref().map(|r| r.len())
+        );
+
         // Try packages first (local/stdio MCPs), then remotes (SSE/HTTP)
         if let Some(packages) = &self.packages {
             if let Some(package) = packages.first() {
