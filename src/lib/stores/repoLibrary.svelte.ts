@@ -236,8 +236,9 @@ class RepoLibraryState {
 		this.isSearchingRegistry = true;
 		this.registryError = null;
 		try {
+			// Don't pass limit - let backend use its default (100)
+			// which accounts for filtering out old versions
 			const result = await invoke<RegistrySearchResult>('list_mcp_registry', {
-				limit: 50,
 				cursor: loadMore ? this.registryNextCursor : null
 			});
 
