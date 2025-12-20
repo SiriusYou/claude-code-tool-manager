@@ -220,29 +220,24 @@ class RepoLibraryState {
 	}
 
 	async loadRegistryMcps(loadMore = false): Promise<void> {
-		console.log('[Registry] loadRegistryMcps called, loadMore:', loadMore);
 		this.isSearchingRegistry = true;
 		this.registryError = null;
 		try {
-			console.log('[Registry] Invoking list_mcp_registry...');
 			const result = await invoke<RegistrySearchResult>('list_mcp_registry', {
 				limit: 50,
 				cursor: loadMore ? this.registryNextCursor : null
 			});
-			console.log('[Registry] Got result:', result);
 			if (loadMore) {
 				this.registryMcps = [...this.registryMcps, ...result.entries];
 			} else {
 				this.registryMcps = result.entries;
 			}
 			this.registryNextCursor = result.nextCursor ?? null;
-			console.log('[Registry] Loaded', this.registryMcps.length, 'MCPs');
 		} catch (e) {
 			this.registryError = String(e);
-			console.error('[Registry] Failed to load registry MCPs:', e);
+			console.error('Failed to load registry MCPs:', e);
 		} finally {
 			this.isSearchingRegistry = false;
-			console.log('[Registry] Done, isSearchingRegistry:', this.isSearchingRegistry);
 		}
 	}
 

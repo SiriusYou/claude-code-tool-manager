@@ -194,6 +194,8 @@ impl RegistryClient {
             url.push_str(&format!("&cursor={}", urlencoding::encode(c)));
         }
 
+        log::info!("[Registry] Fetching: {}", url);
+
         let response = self
             .client
             .get(&url)
@@ -207,10 +209,41 @@ impl RegistryClient {
             return Err(anyhow!("Registry API error {}: {}", status, text));
         }
 
-        let registry_response: RegistryResponse = response.json().await?;
-        let next_cursor = registry_response.metadata.and_then(|m| m.next_cursor);
-        // Unwrap servers from the wrapper
-        let servers = registry_response.servers.into_iter().map(|w| w.server).collect();
+        // Parse as dynamic JSON to be more resilient
+        let json: serde_json::Value = response.json().await?;
+
+        // Extract next cursor from metadata
+        let next_cursor = json
+            .get("metadata")
+            .and_then(|m| m.get("nextCursor"))
+            .and_then(|c| c.as_str())
+            .map(String::from);
+
+        // Extract servers array
+        let servers_array = json
+            .get("servers")
+            .and_then(|s| s.as_array())
+            .ok_or_else(|| anyhow!("No servers array in response"))?;
+
+        log::info!("[Registry] Found {} servers in response", servers_array.len());
+
+        // Parse each server dynamically
+        let mut servers = Vec::new();
+        for item in servers_array {
+            // Each item has { server: {...}, _meta: {...} }
+            if let Some(server_obj) = item.get("server") {
+                match serde_json::from_value::<RegistryServer>(server_obj.clone()) {
+                    Ok(server) => servers.push(server),
+                    Err(e) => {
+                        let name = server_obj.get("name").and_then(|n| n.as_str()).unwrap_or("unknown");
+                        log::warn!("[Registry] Failed to parse server '{}': {}", name, e);
+                        // Continue with other servers instead of failing completely
+                    }
+                }
+            }
+        }
+
+        log::info!("[Registry] Successfully parsed {} servers", servers.len());
 
         Ok((servers, next_cursor))
     }

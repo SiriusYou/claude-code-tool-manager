@@ -38,10 +38,8 @@
 
 	// Load data on mount
 	onMount(() => {
-		console.log('[Marketplace] onMount - loading data');
 		loadData();
 		// Load MCP Registry immediately since MCPs is the default tab
-		console.log('[Marketplace] Loading MCP registry...');
 		repoLibrary.loadRegistryMcps();
 	});
 
@@ -317,7 +315,7 @@
 			{:else}
 				<!-- MCP Grid -->
 				<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-					{#each repoLibrary.registryMcps as mcp (mcp.registryId)}
+					{#each repoLibrary.registryMcps as mcp, i (`${mcp.registryId}-${i}`)}
 						<button
 							onclick={() => (selectedRegistryMcp = mcp)}
 							class="card p-4 flex flex-col text-left hover:ring-2 hover:ring-primary-500/50 transition-all cursor-pointer"
