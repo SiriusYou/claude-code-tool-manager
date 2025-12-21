@@ -256,7 +256,7 @@ impl RegistryClient {
             .and_then(|s| s.as_array())
             .ok_or_else(|| anyhow!("No servers array in response"))?;
 
-        log::info!("[Registry] Found {} servers in response", servers_array.len());
+        eprintln!("[Registry] API returned {} servers in response", servers_array.len());
 
         // Parse each server dynamically (API already filters for latest versions via version=latest param)
         let mut servers = Vec::new();
@@ -274,7 +274,7 @@ impl RegistryClient {
             }
         }
 
-        log::info!("[Registry] Parsed {} servers", servers.len());
+        eprintln!("[Registry] Successfully parsed {} servers", servers.len());
 
         Ok((servers, next_cursor))
     }

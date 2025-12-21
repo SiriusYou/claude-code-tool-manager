@@ -42,7 +42,10 @@ pub async fn list_mcp_registry(
     // Request more items since we filter for only latest versions
     // (many entries are old versions that get skipped)
     let effective_limit = limit.unwrap_or(100);
-    log::info!("[Registry] list_mcp_registry called, limit: {}, cursor: {:?}", effective_limit, cursor);
+
+    // Use eprintln for guaranteed console output
+    eprintln!("=== [Registry] list_mcp_registry called ===");
+    eprintln!("[Registry] limit: {}, cursor: {:?}", effective_limit, cursor);
 
     let client = RegistryClient::new();
 
@@ -88,7 +91,8 @@ pub async fn list_mcp_registry(
         })
         .collect();
 
-    log::warn!("[Registry] RESULT: Converted {}/{} servers ({} skipped)", success_count, servers.len(), fail_count);
+    eprintln!("=== [Registry] RESULT: Converted {}/{} servers ({} skipped) ===", success_count, servers.len(), fail_count);
+    eprintln!("[Registry] Returning {} entries, next_cursor: {:?}", entries.len(), next_cursor);
 
     Ok(RegistrySearchResult {
         entries,
