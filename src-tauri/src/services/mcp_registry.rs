@@ -167,6 +167,8 @@ impl RegistryClient {
         Self {
             client: Client::builder()
                 .user_agent(USER_AGENT)
+                .timeout(std::time::Duration::from_secs(30))
+                .connect_timeout(std::time::Duration::from_secs(10))
                 .build()
                 .expect("Failed to build HTTP client"),
         }
@@ -176,7 +178,7 @@ impl RegistryClient {
     pub async fn search(&self, query: &str, limit: u32) -> Result<Vec<RegistryServer>> {
         let encoded_query = urlencoding::encode(query);
         let url = format!(
-            "{}/v0/servers?search={}&limit={}&status=active",
+            "{}/v0/servers?search={}&limit={}&status=active&version=latest",
             REGISTRY_BASE_URL, encoded_query, limit
         );
 
@@ -193,7 +195,7 @@ impl RegistryClient {
             return Err(anyhow!("Registry API error {}: {}", status, text));
         }
 
-        // Parse as dynamic JSON to filter for only latest versions
+        // Parse as dynamic JSON for resilience
         let json: serde_json::Value = response.json().await?;
         let servers_array = json
             .get("servers")
@@ -202,18 +204,6 @@ impl RegistryClient {
 
         let mut servers = Vec::new();
         for item in servers_array {
-            // Check if this is the latest version
-            let is_latest = item
-                .get("_meta")
-                .and_then(|m| m.get("io.modelcontextprotocol.registry/official"))
-                .and_then(|o| o.get("isLatest"))
-                .and_then(|l| l.as_bool())
-                .unwrap_or(false);
-
-            if !is_latest {
-                continue;
-            }
-
             if let Some(server_obj) = item.get("server") {
                 if let Ok(server) = serde_json::from_value::<RegistryServer>(server_obj.clone()) {
                     servers.push(server);
@@ -227,7 +217,7 @@ impl RegistryClient {
     /// List servers with pagination
     pub async fn list(&self, limit: u32, cursor: Option<&str>) -> Result<(Vec<RegistryServer>, Option<String>)> {
         let mut url = format!(
-            "{}/v0/servers?limit={}&status=active",
+            "{}/v0/servers?limit={}&status=active&version=latest",
             REGISTRY_BASE_URL, limit
         );
 
@@ -268,24 +258,10 @@ impl RegistryClient {
 
         log::info!("[Registry] Found {} servers in response", servers_array.len());
 
-        // Parse each server dynamically, filtering for only latest versions
+        // Parse each server dynamically (API already filters for latest versions via version=latest param)
         let mut servers = Vec::new();
-        let mut skipped_old_versions = 0;
         for item in servers_array {
             // Each item has { server: {...}, _meta: {...} }
-            // Check if this is the latest version
-            let is_latest = item
-                .get("_meta")
-                .and_then(|m| m.get("io.modelcontextprotocol.registry/official"))
-                .and_then(|o| o.get("isLatest"))
-                .and_then(|l| l.as_bool())
-                .unwrap_or(false);
-
-            if !is_latest {
-                skipped_old_versions += 1;
-                continue;
-            }
-
             if let Some(server_obj) = item.get("server") {
                 match serde_json::from_value::<RegistryServer>(server_obj.clone()) {
                     Ok(server) => servers.push(server),
@@ -298,7 +274,7 @@ impl RegistryClient {
             }
         }
 
-        log::info!("[Registry] Parsed {} servers ({} old versions skipped)", servers.len(), skipped_old_versions);
+        log::info!("[Registry] Parsed {} servers", servers.len());
 
         Ok((servers, next_cursor))
     }
