@@ -1,6 +1,7 @@
 pub mod claude_json;
 pub mod config_parser;
 pub mod config_writer;
+pub mod debug_logger;
 pub mod github_client;
 pub mod hook_writer;
 pub mod mcp_registry;

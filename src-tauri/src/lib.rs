@@ -154,6 +154,15 @@ pub fn run() {
             commands::mcp_registry::list_mcp_registry,
             commands::mcp_registry::get_mcp_from_registry,
             commands::mcp_registry::import_mcp_from_registry,
+
+            // Debug Commands
+            commands::debug::enable_debug_mode,
+            commands::debug::disable_debug_mode,
+            commands::debug::is_debug_mode_enabled,
+            commands::debug::get_debug_log_path,
+            commands::debug::open_logs_folder,
+            commands::debug::write_frontend_log,
+            commands::debug::write_invoke_log,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -5,7 +5,8 @@
 	import { Toast } from '$lib/components/shared';
 	import UpdateNotification from '$lib/components/shared/UpdateNotification.svelte';
 	import WhatsNewModal from '$lib/components/shared/WhatsNewModal.svelte';
-	import { mcpLibrary, projectsStore, skillLibrary, subagentLibrary, whatsNew } from '$lib/stores';
+	import { mcpLibrary, projectsStore, skillLibrary, subagentLibrary, whatsNew, debugStore } from '$lib/stores';
+	import { installDebugInterceptor } from '$lib/utils/debugLogger';
 
 	let { children } = $props();
 
@@ -20,6 +21,13 @@
 			subagentLibrary.load(),
 			subagentLibrary.loadGlobalSubAgents()
 		]);
+
+		// Load debug state and install interceptor if enabled
+		await debugStore.load();
+		if (debugStore.isEnabled) {
+			installDebugInterceptor();
+			console.log('[Debug] App started with debug mode enabled');
+		}
 
 		// Check for "What's New" after update (with delay to not block startup)
 		setTimeout(() => {

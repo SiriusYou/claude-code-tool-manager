@@ -1,5 +1,6 @@
 use crate::db::{CreateProjectRequest, Database, Mcp, Project, ProjectMcp};
 use crate::services::config_writer;
+use log::{error, info};
 use rusqlite::params;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -37,7 +38,11 @@ fn row_to_mcp(row: &rusqlite::Row, offset: usize) -> rusqlite::Result<Mcp> {
 
 #[tauri::command]
 pub fn get_all_projects(db: State<'_, Mutex<Database>>) -> Result<Vec<Project>, String> {
-    let db = db.lock().map_err(|e| e.to_string())?;
+    info!("[Projects] Loading all projects");
+    let db = db.lock().map_err(|e| {
+        error!("[Projects] Failed to acquire database lock: {}", e);
+        e.to_string()
+    })?;
 
     // Get all projects
     let mut stmt = db
@@ -100,6 +105,7 @@ pub fn get_all_projects(db: State<'_, Mutex<Database>>) -> Result<Vec<Project>, 
         result.push(project);
     }
 
+    info!("[Projects] Loaded {} projects", result.len());
     Ok(result)
 }
 
@@ -110,6 +116,7 @@ pub fn add_project(
 ) -> Result<Project, String> {
     use crate::utils::paths::get_claude_paths;
 
+    info!("[Projects] Adding project: {} at {}", project.name, project.path);
     let db = db.lock().map_err(|e| e.to_string())?;
 
     // Check if .claude/.mcp.json exists
@@ -151,10 +158,15 @@ pub fn add_project(
 
 #[tauri::command]
 pub fn remove_project(db: State<'_, Mutex<Database>>, id: i64) -> Result<(), String> {
+    info!("[Projects] Removing project id={}", id);
     let db = db.lock().map_err(|e| e.to_string())?;
     db.conn()
         .execute("DELETE FROM projects WHERE id = ?", [id])
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            error!("[Projects] Failed to remove project id={}: {}", id, e);
+            e.to_string()
+        })?;
+    info!("[Projects] Removed project id={}", id);
     Ok(())
 }
 
@@ -240,6 +252,7 @@ pub fn toggle_project_mcp(
 pub fn sync_project_config(db: State<'_, Mutex<Database>>, project_id: i64) -> Result<(), String> {
     use crate::utils::paths::get_claude_paths;
 
+    info!("[Projects] Syncing config for project id={}", project_id);
     let db = db.lock().map_err(|e| e.to_string())?;
 
     // Get project path

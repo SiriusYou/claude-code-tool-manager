@@ -7,6 +7,8 @@
 
 A desktop application for managing MCP servers, Skills, Hooks, and Sub-Agents for [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
 
+![Dashboard](imgs/dashboard.png)
+
 ## Why?
 
 Claude Code stores its configuration across multiple JSON files and markdown files scattered throughout your filesystem. Managing MCPs, Skills, Hooks, and Sub-Agents manually means editing `~/.claude.json`, `~/.claude/settings.json`, creating files in `~/.claude/commands/`, `~/.claude/skills/`, and keeping track of what's enabled where.
@@ -34,6 +36,8 @@ Create, organize, and assign MCP servers to projects or global settings.
 
 Define custom slash commands and agent skills with full control over tool access and model behavior.
 
+![Skills](imgs/skills.png)
+
 - **Command Skills**: Create slash commands (`/name`) that users can invoke
 - **Agent Skills**: Define skills that the model can invoke automatically (stored in `.claude/skills/`)
 - **Tool restrictions**: Limit which tools a skill can use with `allowed-tools`
@@ -47,9 +51,13 @@ Define custom slash commands and agent skills with full control over tool access
 - **Global/project assignment**: Enable skills globally or per-project
 - **Auto-detection**: Discovers skills from `~/.claude/commands/`, `~/.claude/skills/`, and project directories
 
+![Add Skill](imgs/add-skill.png)
+
 ### Hooks (Event Handlers)
 
 Configure hooks that run before/after tool calls, on permission requests, and more.
+
+![Hooks](imgs/hooks.png)
 
 - **All event types supported**:
   - `PreToolUse` / `PostToolUse` - Before/after tool execution
@@ -70,6 +78,8 @@ Configure hooks that run before/after tool calls, on permission requests, and mo
 
 Define specialized agents with custom instructions, tool access, and model selection.
 
+![Sub-Agents](imgs/sub-agent.png)
+
 - **Custom sub-agents**: Define specialized agents for specific tasks
 - **Model selection**: Choose which Claude model the sub-agent uses
 - **Tool access control**: Specify which tools the sub-agent can access
@@ -77,6 +87,8 @@ Define specialized agents with custom instructions, tool access, and model selec
 - **Skills integration**: Assign skills to sub-agents
 - **Auto-detection**: Discovers agents from `~/.claude/agents/` and project directories
 - **Project scoping**: Assign sub-agents globally or to specific projects
+
+![Edit Sub-Agent](imgs/edit-sub-agent.png)
 
 ### Project Management
 

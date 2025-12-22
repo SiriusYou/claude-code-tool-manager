@@ -1,6 +1,7 @@
 use crate::db::models::{CreateHookRequest, GlobalHook, Hook, ProjectHook};
 use crate::db::schema::Database;
 use crate::services::hook_writer;
+use log::{error, info};
 use rusqlite::params;
 use std::path::Path;
 use std::sync::Mutex;
@@ -50,13 +51,16 @@ fn row_to_hook_with_offset(row: &rusqlite::Row, offset: usize) -> rusqlite::Resu
 
 const HOOK_SELECT_FIELDS: &str = "id, name, description, event_type, matcher, hook_type, command, prompt, timeout, tags, source, is_template, created_at, updated_at";
 
+// Table-prefixed version for JOIN queries to avoid ambiguous column names
+const HOOK_SELECT_FIELDS_H: &str = "h.id, h.name, h.description, h.event_type, h.matcher, h.hook_type, h.command, h.prompt, h.timeout, h.tags, h.source, h.is_template, h.created_at, h.updated_at";
+
 // Helper to get all enabled global hooks and write to settings.json
 fn sync_global_hooks(db: &Database) -> Result<(), String> {
     let mut stmt = db
         .conn()
         .prepare(&format!(
-            "SELECT h.{} FROM global_hooks gh JOIN hooks h ON gh.hook_id = h.id WHERE gh.is_enabled = 1",
-            HOOK_SELECT_FIELDS
+            "SELECT {} FROM global_hooks gh JOIN hooks h ON gh.hook_id = h.id WHERE gh.is_enabled = 1",
+            HOOK_SELECT_FIELDS_H
         ))
         .map_err(|e| e.to_string())?;
 
@@ -74,11 +78,11 @@ fn sync_project_hooks(db: &Database, project_path: &str) -> Result<(), String> {
     let mut stmt = db
         .conn()
         .prepare(&format!(
-            "SELECT h.{} FROM project_hooks ph
+            "SELECT {} FROM project_hooks ph
              JOIN hooks h ON ph.hook_id = h.id
              JOIN projects p ON ph.project_id = p.id
              WHERE ph.is_enabled = 1 AND p.path = ?",
-            HOOK_SELECT_FIELDS
+            HOOK_SELECT_FIELDS_H
         ))
         .map_err(|e| e.to_string())?;
 
@@ -95,21 +99,29 @@ fn sync_project_hooks(db: &Database, project_path: &str) -> Result<(), String> {
 
 #[tauri::command]
 pub fn get_all_hooks(db: State<'_, Mutex<Database>>) -> Result<Vec<Hook>, String> {
-    let db = db.lock().map_err(|e| e.to_string())?;
+    info!("[Hooks] Loading all hooks");
+    let db = db.lock().map_err(|e| {
+        error!("[Hooks] Failed to acquire database lock: {}", e);
+        e.to_string()
+    })?;
     let mut stmt = db
         .conn()
         .prepare(&format!(
             "SELECT {} FROM hooks WHERE is_template = 0 ORDER BY name",
             HOOK_SELECT_FIELDS
         ))
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            error!("[Hooks] Failed to prepare query: {}", e);
+            e.to_string()
+        })?;
 
-    let hooks = stmt
+    let hooks: Vec<Hook> = stmt
         .query_map([], row_to_hook)
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
         .collect();
 
+    info!("[Hooks] Loaded {} hooks", hooks.len());
     Ok(hooks)
 }
 
@@ -333,19 +345,26 @@ pub fn delete_hook(db: State<'_, Mutex<Database>>, id: i64) -> Result<(), String
 
 #[tauri::command]
 pub fn get_global_hooks(db: State<'_, Mutex<Database>>) -> Result<Vec<GlobalHook>, String> {
-    let db = db.lock().map_err(|e| e.to_string())?;
+    info!("[Hooks] Loading global hooks");
+    let db = db.lock().map_err(|e| {
+        error!("[Hooks] Failed to acquire database lock: {}", e);
+        e.to_string()
+    })?;
     let mut stmt = db
         .conn()
         .prepare(&format!(
-            "SELECT gh.id, gh.hook_id, gh.is_enabled, h.{}
+            "SELECT gh.id, gh.hook_id, gh.is_enabled, {}
              FROM global_hooks gh
              JOIN hooks h ON gh.hook_id = h.id
              ORDER BY h.name",
-            HOOK_SELECT_FIELDS
+            HOOK_SELECT_FIELDS_H
         ))
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            error!("[Hooks] Failed to prepare global hooks query: {}", e);
+            e.to_string()
+        })?;
 
-    let hooks = stmt
+    let hooks: Vec<GlobalHook> = stmt
         .query_map([], |row| {
             Ok(GlobalHook {
                 id: row.get(0)?,
@@ -358,11 +377,13 @@ pub fn get_global_hooks(db: State<'_, Mutex<Database>>) -> Result<Vec<GlobalHook
         .filter_map(|r| r.ok())
         .collect();
 
+    info!("[Hooks] Loaded {} global hooks", hooks.len());
     Ok(hooks)
 }
 
 #[tauri::command]
 pub fn add_global_hook(db: State<'_, Mutex<Database>>, hook_id: i64) -> Result<(), String> {
+    info!("[Hooks] Adding global hook id={}", hook_id);
     let db_guard = db.lock().map_err(|e| e.to_string())?;
 
     db_guard
@@ -414,18 +435,25 @@ pub fn get_project_hooks(
     db: State<'_, Mutex<Database>>,
     project_id: i64,
 ) -> Result<Vec<ProjectHook>, String> {
-    let db = db.lock().map_err(|e| e.to_string())?;
+    info!("[Hooks] Loading project hooks for project_id={}", project_id);
+    let db = db.lock().map_err(|e| {
+        error!("[Hooks] Failed to acquire database lock: {}", e);
+        e.to_string()
+    })?;
     let mut stmt = db
         .conn()
         .prepare(&format!(
-            "SELECT ph.id, ph.hook_id, ph.is_enabled, h.{}
+            "SELECT ph.id, ph.hook_id, ph.is_enabled, {}
              FROM project_hooks ph
              JOIN hooks h ON ph.hook_id = h.id
              WHERE ph.project_id = ?
              ORDER BY h.name",
-            HOOK_SELECT_FIELDS
+            HOOK_SELECT_FIELDS_H
         ))
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            error!("[Hooks] Failed to prepare project hooks query: {}", e);
+            e.to_string()
+        })?;
 
     let hooks = stmt
         .query_map([project_id], |row| {

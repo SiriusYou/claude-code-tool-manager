@@ -1,7 +1,38 @@
 <script lang="ts">
 	import type { Mcp, Skill, SubAgent, GlobalSkill, GlobalSubAgent } from '$lib/types';
-	import { projectsStore, notifications, mcpLibrary, skillLibrary, subagentLibrary } from '$lib/stores';
-	import { Globe, RefreshCw, Plus, Minus, Plug, Server, Sparkles, Bot } from 'lucide-svelte';
+	import { projectsStore, notifications, mcpLibrary, skillLibrary, subagentLibrary, debugStore } from '$lib/stores';
+	import { Globe, RefreshCw, Plus, Minus, Plug, Server, Sparkles, Bot, Bug, FolderOpen, Loader2 } from 'lucide-svelte';
+	import { installDebugInterceptor, uninstallDebugInterceptor } from '$lib/utils/debugLogger';
+	import { onMount } from 'svelte';
+
+	// Load debug state on mount
+	onMount(() => {
+		debugStore.load();
+	});
+
+	async function handleToggleDebug() {
+		try {
+			if (debugStore.isEnabled) {
+				await debugStore.disable();
+				uninstallDebugInterceptor();
+				notifications.success('Debug mode disabled');
+			} else {
+				await debugStore.enable();
+				installDebugInterceptor();
+				notifications.success('Debug mode enabled');
+			}
+		} catch (e) {
+			notifications.error('Failed to toggle debug mode');
+		}
+	}
+
+	async function handleOpenLogsFolder() {
+		try {
+			await debugStore.openLogsFolder();
+		} catch {
+			notifications.error('Failed to open logs folder');
+		}
+	}
 
 	// Tab state
 	type Tab = 'mcps' | 'skills' | 'agents';
@@ -380,6 +411,66 @@
 					</button>
 				</div>
 			{/if}
+		{/if}
+	</div>
+
+	<!-- Debug Mode Section -->
+	<div class="card p-6 mt-6">
+		<div class="flex items-center justify-between">
+			<div class="flex items-center gap-3">
+				<div class="w-10 h-10 rounded-xl bg-orange-100 dark:bg-orange-900/50 flex items-center justify-center">
+					<Bug class="w-5 h-5 text-orange-600 dark:text-orange-400" />
+				</div>
+				<div>
+					<h2 class="text-lg font-semibold text-gray-900 dark:text-white">Debug Mode</h2>
+					<p class="text-sm text-gray-500 dark:text-gray-400">
+						Enable logging to help troubleshoot issues
+					</p>
+				</div>
+			</div>
+			<button
+				onclick={handleToggleDebug}
+				disabled={debugStore.isLoading}
+				class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none disabled:opacity-50 {debugStore.isEnabled ? 'bg-primary-600' : 'bg-gray-300 dark:bg-gray-600'}"
+				role="switch"
+				aria-checked={debugStore.isEnabled}
+				title={debugStore.isEnabled ? 'Disable debug mode' : 'Enable debug mode'}
+			>
+				{#if debugStore.isLoading}
+					<span class="absolute inset-0 flex items-center justify-center">
+						<Loader2 class="w-4 h-4 animate-spin text-white" />
+					</span>
+				{:else}
+					<span
+						class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out {debugStore.isEnabled ? 'translate-x-5' : 'translate-x-0'}"
+					></span>
+				{/if}
+			</button>
+		</div>
+
+		{#if debugStore.isEnabled || debugStore.logFilePath}
+			<div class="mt-4 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+				<div class="flex items-center justify-between gap-4">
+					<div class="min-w-0 flex-1">
+						<p class="text-sm font-medium text-gray-700 dark:text-gray-300">Log file location:</p>
+						<code class="text-xs text-gray-500 dark:text-gray-400 break-all">
+							{debugStore.logFilePath || 'No active log file'}
+						</code>
+					</div>
+					<button
+						onclick={handleOpenLogsFolder}
+						class="btn btn-secondary flex-shrink-0"
+					>
+						<FolderOpen class="w-4 h-4 mr-2" />
+						Open Folder
+					</button>
+				</div>
+				{#if debugStore.isEnabled}
+					<p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
+						Debug mode is active. Logs are being written to the file above. Share this file when reporting issues.
+					</p>
+				{/if}
+			</div>
 		{/if}
 	</div>
 </div>

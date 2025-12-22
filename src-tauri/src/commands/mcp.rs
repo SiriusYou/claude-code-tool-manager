@@ -1,4 +1,5 @@
 use crate::db::{CreateMcpRequest, Database, Mcp};
+use log::{error, info};
 use rusqlite::params;
 use std::sync::Mutex;
 use tauri::State;
@@ -34,7 +35,11 @@ fn row_to_mcp(row: &rusqlite::Row) -> rusqlite::Result<Mcp> {
 
 #[tauri::command]
 pub fn get_all_mcps(db: State<'_, Mutex<Database>>) -> Result<Vec<Mcp>, String> {
-    let db = db.lock().map_err(|e| e.to_string())?;
+    info!("[MCP] Loading all MCPs from database");
+    let db = db.lock().map_err(|e| {
+        error!("[MCP] Failed to acquire database lock: {}", e);
+        e.to_string()
+    })?;
     let mut stmt = db
         .conn()
         .prepare(
@@ -42,14 +47,18 @@ pub fn get_all_mcps(db: State<'_, Mutex<Database>>) -> Result<Vec<Mcp>, String> 
                     icon, tags, source, source_path, is_enabled_global, created_at, updated_at
              FROM mcps ORDER BY name",
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            error!("[MCP] Failed to prepare query: {}", e);
+            e.to_string()
+        })?;
 
-    let mcps = stmt
+    let mcps: Vec<Mcp> = stmt
         .query_map([], row_to_mcp)
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
         .collect();
 
+    info!("[MCP] Loaded {} MCPs", mcps.len());
     Ok(mcps)
 }
 
@@ -71,7 +80,11 @@ pub fn get_mcp(db: State<'_, Mutex<Database>>, id: i64) -> Result<Mcp, String> {
 
 #[tauri::command]
 pub fn create_mcp(db: State<'_, Mutex<Database>>, mcp: CreateMcpRequest) -> Result<Mcp, String> {
-    let db_guard = db.lock().map_err(|e| e.to_string())?;
+    info!("[MCP] Creating new MCP: {}", mcp.name);
+    let db_guard = db.lock().map_err(|e| {
+        error!("[MCP] Failed to acquire database lock: {}", e);
+        e.to_string()
+    })?;
 
     let args_json = mcp.args.as_ref().map(|a| serde_json::to_string(a).unwrap());
     let headers_json = mcp.headers.as_ref().map(|h| serde_json::to_string(h).unwrap());
@@ -95,9 +108,13 @@ pub fn create_mcp(db: State<'_, Mutex<Database>>, mcp: CreateMcpRequest) -> Resu
                 tags_json
             ],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            error!("[MCP] Failed to create MCP '{}': {}", mcp.name, e);
+            e.to_string()
+        })?;
 
     let id = db_guard.conn().last_insert_rowid();
+    info!("[MCP] Created MCP with id: {}", id);
 
     // Fetch the newly created MCP
     let mut stmt = db_guard
@@ -119,6 +136,7 @@ pub fn update_mcp(
     id: i64,
     mcp: CreateMcpRequest,
 ) -> Result<Mcp, String> {
+    info!("[MCP] Updating MCP id={}: {}", id, mcp.name);
     let db = db.lock().map_err(|e| e.to_string())?;
 
     let args_json = mcp.args.as_ref().map(|a| serde_json::to_string(a).unwrap());
@@ -163,15 +181,21 @@ pub fn update_mcp(
 
 #[tauri::command]
 pub fn delete_mcp(db: State<'_, Mutex<Database>>, id: i64) -> Result<(), String> {
+    info!("[MCP] Deleting MCP id={}", id);
     let db = db.lock().map_err(|e| e.to_string())?;
     db.conn()
         .execute("DELETE FROM mcps WHERE id = ?", [id])
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            error!("[MCP] Failed to delete MCP id={}: {}", id, e);
+            e.to_string()
+        })?;
+    info!("[MCP] Deleted MCP id={}", id);
     Ok(())
 }
 
 #[tauri::command]
 pub fn duplicate_mcp(db: State<'_, Mutex<Database>>, id: i64) -> Result<Mcp, String> {
+    info!("[MCP] Duplicating MCP id={}", id);
     let db = db.lock().map_err(|e| e.to_string())?;
 
     // Get original
@@ -243,12 +267,16 @@ pub fn toggle_global_mcp(
     id: i64,
     enabled: bool,
 ) -> Result<(), String> {
+    info!("[MCP] Toggling global MCP id={} enabled={}", id, enabled);
     let db = db.lock().map_err(|e| e.to_string())?;
     db.conn()
         .execute(
             "UPDATE mcps SET is_enabled_global = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             params![enabled as i32, id],
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            error!("[MCP] Failed to toggle global MCP id={}: {}", id, e);
+            e.to_string()
+        })?;
     Ok(())
 }

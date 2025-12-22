@@ -83,44 +83,53 @@ class HookLibraryState {
 	});
 
 	async load() {
+		console.log('[hookLibrary] Loading hooks...');
 		this.isLoading = true;
 		this.error = null;
 		try {
 			this.hooks = await invoke<Hook[]>('get_all_hooks');
+			console.log(`[hookLibrary] Loaded ${this.hooks.length} hooks`);
 		} catch (e) {
 			this.error = String(e);
-			console.error('Failed to load hooks:', e);
+			console.error('[hookLibrary] Failed to load hooks:', e);
 		} finally {
 			this.isLoading = false;
 		}
 	}
 
 	async loadTemplates() {
+		console.log('[hookLibrary] Loading hook templates...');
 		try {
 			this.templates = await invoke<Hook[]>('get_hook_templates');
+			console.log(`[hookLibrary] Loaded ${this.templates.length} templates`);
 		} catch (e) {
-			console.error('Failed to load hook templates:', e);
+			console.error('[hookLibrary] Failed to load hook templates:', e);
 		}
 	}
 
 	async seedTemplates() {
+		console.log('[hookLibrary] Seeding hook templates...');
 		try {
 			await invoke('seed_hook_templates');
 			await this.loadTemplates();
+			console.log('[hookLibrary] Seeded hook templates');
 		} catch (e) {
-			console.error('Failed to seed hook templates:', e);
+			console.error('[hookLibrary] Failed to seed hook templates:', e);
 		}
 	}
 
 	async loadGlobalHooks() {
+		console.log('[hookLibrary] Loading global hooks...');
 		try {
 			this.globalHooks = await invoke<GlobalHook[]>('get_global_hooks');
+			console.log(`[hookLibrary] Loaded ${this.globalHooks.length} global hooks`);
 		} catch (e) {
-			console.error('Failed to load global hooks:', e);
+			console.error('[hookLibrary] Failed to load global hooks:', e);
 		}
 	}
 
 	async loadAllProjectHooks() {
+		console.log('[hookLibrary] Loading all project hooks...');
 		try {
 			const projects = await invoke<Project[]>('get_all_projects');
 			const projectsWithHooks: ProjectWithHooks[] = [];
@@ -135,8 +144,9 @@ class HookLibraryState {
 			}
 
 			this.projectsWithHooks = projectsWithHooks;
+			console.log(`[hookLibrary] Loaded hooks for ${projectsWithHooks.length} projects`);
 		} catch (e) {
-			console.error('Failed to load project hooks:', e);
+			console.error('[hookLibrary] Failed to load project hooks:', e);
 		}
 	}
 
@@ -145,56 +155,71 @@ class HookLibraryState {
 	}
 
 	async create(request: CreateHookRequest): Promise<Hook> {
+		console.log(`[hookLibrary] Creating hook: ${request.name}`);
 		const hook = await invoke<Hook>('create_hook', { hook: request });
 		this.hooks = [...this.hooks, hook];
+		console.log(`[hookLibrary] Created hook id=${hook.id}`);
 		return hook;
 	}
 
 	async createFromTemplate(templateId: number, name: string): Promise<Hook> {
+		console.log(`[hookLibrary] Creating hook from template id=${templateId}: ${name}`);
 		const hook = await invoke<Hook>('create_hook_from_template', { templateId, name });
 		this.hooks = [...this.hooks, hook];
+		console.log(`[hookLibrary] Created hook id=${hook.id} from template`);
 		return hook;
 	}
 
 	async update(id: number, request: CreateHookRequest): Promise<Hook> {
+		console.log(`[hookLibrary] Updating hook id=${id}: ${request.name}`);
 		const hook = await invoke<Hook>('update_hook', { id, hook: request });
 		this.hooks = this.hooks.map((h) => (h.id === id ? hook : h));
+		console.log(`[hookLibrary] Updated hook id=${id}`);
 		return hook;
 	}
 
 	async delete(id: number): Promise<void> {
+		console.log(`[hookLibrary] Deleting hook id=${id}`);
 		await invoke('delete_hook', { id });
 		this.hooks = this.hooks.filter((h) => h.id !== id);
+		console.log(`[hookLibrary] Deleted hook id=${id}`);
 	}
 
 	async addGlobalHook(hookId: number): Promise<void> {
+		console.log(`[hookLibrary] Adding global hook id=${hookId}`);
 		await invoke('add_global_hook', { hookId });
 		await this.loadGlobalHooks();
 	}
 
 	async removeGlobalHook(hookId: number): Promise<void> {
+		console.log(`[hookLibrary] Removing global hook id=${hookId}`);
 		await invoke('remove_global_hook', { hookId });
 		await this.loadGlobalHooks();
 	}
 
 	async toggleGlobalHook(id: number, enabled: boolean): Promise<void> {
+		console.log(`[hookLibrary] Toggling global hook id=${id} enabled=${enabled}`);
 		await invoke('toggle_global_hook', { id, enabled });
 		await this.loadGlobalHooks();
 	}
 
 	async assignToProject(projectId: number, hookId: number): Promise<void> {
+		console.log(`[hookLibrary] Assigning hook id=${hookId} to project id=${projectId}`);
 		await invoke('assign_hook_to_project', { projectId, hookId });
 	}
 
 	async removeFromProject(projectId: number, hookId: number): Promise<void> {
+		console.log(`[hookLibrary] Removing hook id=${hookId} from project id=${projectId}`);
 		await invoke('remove_hook_from_project', { projectId, hookId });
 	}
 
 	async toggleProjectHook(assignmentId: number, enabled: boolean): Promise<void> {
+		console.log(`[hookLibrary] Toggling project hook assignment id=${assignmentId} enabled=${enabled}`);
 		await invoke('toggle_project_hook', { assignmentId, enabled });
 	}
 
 	async getProjectHooks(projectId: number): Promise<ProjectHook[]> {
+		console.log(`[hookLibrary] Getting hooks for project id=${projectId}`);
 		return await invoke<ProjectHook[]>('get_project_hooks', { projectId });
 	}
 

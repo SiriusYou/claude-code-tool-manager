@@ -36,42 +36,53 @@ class McpLibraryState {
 	}));
 
 	async load() {
+		console.log('[mcpLibrary] Loading MCPs...');
 		this.isLoading = true;
 		this.error = null;
 		try {
 			this.mcps = await invoke<Mcp[]>('get_all_mcps');
+			console.log(`[mcpLibrary] Loaded ${this.mcps.length} MCPs`);
 		} catch (e) {
 			this.error = String(e);
-			console.error('Failed to load MCPs:', e);
+			console.error('[mcpLibrary] Failed to load MCPs:', e);
 		} finally {
 			this.isLoading = false;
 		}
 	}
 
 	async create(request: CreateMcpRequest): Promise<Mcp> {
+		console.log(`[mcpLibrary] Creating MCP: ${request.name}`);
 		const mcp = await invoke<Mcp>('create_mcp', { mcp: request });
 		this.mcps = [...this.mcps, mcp];
+		console.log(`[mcpLibrary] Created MCP id=${mcp.id}`);
 		return mcp;
 	}
 
 	async update(id: number, request: CreateMcpRequest): Promise<Mcp> {
+		console.log(`[mcpLibrary] Updating MCP id=${id}: ${request.name}`);
 		const mcp = await invoke<Mcp>('update_mcp', { id, mcp: request });
 		this.mcps = this.mcps.map((m) => (m.id === id ? mcp : m));
+		console.log(`[mcpLibrary] Updated MCP id=${id}`);
 		return mcp;
 	}
 
 	async delete(id: number): Promise<void> {
+		console.log(`[mcpLibrary] Deleting MCP id=${id}`);
 		await invoke('delete_mcp', { id });
 		this.mcps = this.mcps.filter((m) => m.id !== id);
+		console.log(`[mcpLibrary] Deleted MCP id=${id}`);
 	}
 
 	async duplicate(id: number): Promise<Mcp> {
+		console.log(`[mcpLibrary] Duplicating MCP id=${id}`);
 		const mcp = await invoke<Mcp>('duplicate_mcp', { id });
 		this.mcps = [...this.mcps, mcp];
+		console.log(`[mcpLibrary] Duplicated MCP id=${id} -> id=${mcp.id}`);
 		return mcp;
 	}
 
 	async toggleGlobal(id: number, enabled: boolean): Promise<void> {
+		console.log(`[mcpLibrary] Toggling global MCP id=${id} enabled=${enabled}`);
 		await invoke('toggle_global_mcp', { id, enabled });
 		this.mcps = this.mcps.map((m) => (m.id === id ? { ...m, isEnabledGlobal: enabled } : m));
 	}
