@@ -68,8 +68,16 @@ body:
   - type: textarea
     id: logs
     attributes:
-      label: Relevant log output
-      description: Please copy and paste any relevant log output. This will be automatically formatted.
+      label: Debug logs
+      description: |
+        To generate debug logs:
+        1. Go to Settings > Global Settings
+        2. Enable "Debug Mode" toggle
+        3. Reproduce the issue
+        4. Click "Open Folder" to find the log file
+        5. Attach or paste the relevant log content here
+
+        This will be automatically formatted as code.
       render: shell
 
   - type: textarea
@@ -86,4 +94,6 @@ body:
         - label: I have searched existing issues to ensure this bug hasn't been reported
           required: true
         - label: I am using the latest version of the app
+          required: false
+        - label: I have attached debug logs (Settings > Global Settings > Debug Mode)
           required: false
