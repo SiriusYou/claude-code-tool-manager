@@ -61,6 +61,9 @@ regex = "1"
 # URL encoding for API queries
 urlencoding = "2"
 
+# UUID generation for session IDs
+uuid = { version = "1", features = ["v4"] }
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
@@ -68,3 +71,11 @@ custom-protocol = ["tauri/custom-protocol"]
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-process = "2.3.1"
 tauri-plugin-updater = "2.9.0"
+
+[dev-dependencies]
+rstest = "0.21"                                    # Parameterized tests
+tempfile = "3"                                     # Temp directories for file I/O tests
+pretty_assertions = "1"                            # Better diff output for test failures
+tokio-test = "0.4"                                 # Async test utilities
+insta = { version = "1", features = ["json"] }    # Snapshot testing for JSON output
+wiremock = "0.6"                                   # HTTP mocking for API tests

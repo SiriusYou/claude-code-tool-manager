@@ -1,9 +1,11 @@
-use crate::db::models::{CreateSkillRequest, CreateSkillFileRequest, Skill, SkillFile, GlobalSkill, ProjectSkill};
+use crate::db::models::{
+    CreateSkillFileRequest, CreateSkillRequest, GlobalSkill, ProjectSkill, Skill, SkillFile,
+};
 use crate::db::schema::Database;
 use crate::services::skill_writer;
 use rusqlite::params;
-use std::sync::Mutex;
 use std::path::Path;
+use std::sync::Mutex;
 use tauri::State;
 
 fn parse_json_array(s: Option<String>) -> Option<Vec<String>> {
@@ -52,10 +54,7 @@ fn row_to_skill_with_offset(row: &rusqlite::Row, offset: usize) -> rusqlite::Res
 pub fn get_all_skills(db: State<'_, Mutex<Database>>) -> Result<Vec<Skill>, String> {
     let db = db.lock().map_err(|e| e.to_string())?;
     let query = format!("SELECT {} FROM skills ORDER BY name", SKILL_SELECT_FIELDS);
-    let mut stmt = db
-        .conn()
-        .prepare(&query)
-        .map_err(|e| e.to_string())?;
+    let mut stmt = db.conn().prepare(&query).map_err(|e| e.to_string())?;
 
     let skills = stmt
         .query_map([], row_to_skill)
@@ -67,11 +66,20 @@ pub fn get_all_skills(db: State<'_, Mutex<Database>>) -> Result<Vec<Skill>, Stri
 }
 
 #[tauri::command]
-pub fn create_skill(db: State<'_, Mutex<Database>>, skill: CreateSkillRequest) -> Result<Skill, String> {
+pub fn create_skill(
+    db: State<'_, Mutex<Database>>,
+    skill: CreateSkillRequest,
+) -> Result<Skill, String> {
     let db_guard = db.lock().map_err(|e| e.to_string())?;
 
-    let allowed_tools_json = skill.allowed_tools.as_ref().map(|t| serde_json::to_string(t).unwrap());
-    let tags_json = skill.tags.as_ref().map(|t| serde_json::to_string(t).unwrap());
+    let allowed_tools_json = skill
+        .allowed_tools
+        .as_ref()
+        .map(|t| serde_json::to_string(t).unwrap());
+    let tags_json = skill
+        .tags
+        .as_ref()
+        .map(|t| serde_json::to_string(t).unwrap());
     let disable_model_invocation = skill.disable_model_invocation.unwrap_or(false) as i32;
 
     db_guard.conn()
@@ -85,10 +93,7 @@ pub fn create_skill(db: State<'_, Mutex<Database>>, skill: CreateSkillRequest) -
     let id = db_guard.conn().last_insert_rowid();
 
     let query = format!("SELECT {} FROM skills WHERE id = ?", SKILL_SELECT_FIELDS);
-    let mut stmt = db_guard
-        .conn()
-        .prepare(&query)
-        .map_err(|e| e.to_string())?;
+    let mut stmt = db_guard.conn().prepare(&query).map_err(|e| e.to_string())?;
 
     stmt.query_row([id], row_to_skill)
         .map_err(|e| e.to_string())
@@ -102,8 +107,14 @@ pub fn update_skill(
 ) -> Result<Skill, String> {
     let db = db.lock().map_err(|e| e.to_string())?;
 
-    let allowed_tools_json = skill.allowed_tools.as_ref().map(|t| serde_json::to_string(t).unwrap());
-    let tags_json = skill.tags.as_ref().map(|t| serde_json::to_string(t).unwrap());
+    let allowed_tools_json = skill
+        .allowed_tools
+        .as_ref()
+        .map(|t| serde_json::to_string(t).unwrap());
+    let tags_json = skill
+        .tags
+        .as_ref()
+        .map(|t| serde_json::to_string(t).unwrap());
     let disable_model_invocation = skill.disable_model_invocation.unwrap_or(false) as i32;
 
     db.conn()
@@ -115,10 +126,7 @@ pub fn update_skill(
         .map_err(|e| e.to_string())?;
 
     let query = format!("SELECT {} FROM skills WHERE id = ?", SKILL_SELECT_FIELDS);
-    let mut stmt = db
-        .conn()
-        .prepare(&query)
-        .map_err(|e| e.to_string())?;
+    let mut stmt = db.conn().prepare(&query).map_err(|e| e.to_string())?;
 
     stmt.query_row([id], row_to_skill)
         .map_err(|e| e.to_string())
@@ -153,10 +161,7 @@ pub fn get_global_skills(db: State<'_, Mutex<Database>>) -> Result<Vec<GlobalSki
          JOIN skills s ON gs.skill_id = s.id
          ORDER BY s.name"
     );
-    let mut stmt = db
-        .conn()
-        .prepare(&query)
-        .map_err(|e| e.to_string())?;
+    let mut stmt = db.conn().prepare(&query).map_err(|e| e.to_string())?;
 
     let skills = stmt
         .query_map([], |row| {
@@ -180,14 +185,14 @@ pub fn add_global_skill(db: State<'_, Mutex<Database>>, skill_id: i64) -> Result
 
     // Get the skill details for file writing
     let query = format!("SELECT {} FROM skills WHERE id = ?", SKILL_SELECT_FIELDS);
-    let mut stmt = db_guard.conn()
-        .prepare(&query)
+    let mut stmt = db_guard.conn().prepare(&query).map_err(|e| e.to_string())?;
+
+    let skill: Skill = stmt
+        .query_row([skill_id], row_to_skill)
         .map_err(|e| e.to_string())?;
 
-    let skill: Skill = stmt.query_row([skill_id], row_to_skill)
-        .map_err(|e| e.to_string())?;
-
-    db_guard.conn()
+    db_guard
+        .conn()
         .execute(
             "INSERT OR IGNORE INTO global_skills (skill_id) VALUES (?)",
             [skill_id],
@@ -195,8 +200,7 @@ pub fn add_global_skill(db: State<'_, Mutex<Database>>, skill_id: i64) -> Result
         .map_err(|e| e.to_string())?;
 
     // Write the skill file to global config
-    skill_writer::write_global_skill(&skill)
-        .map_err(|e| e.to_string())?;
+    skill_writer::write_global_skill(&skill).map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -207,29 +211,33 @@ pub fn remove_global_skill(db: State<'_, Mutex<Database>>, skill_id: i64) -> Res
 
     // Get the skill for file deletion
     let query = format!("SELECT {} FROM skills WHERE id = ?", SKILL_SELECT_FIELDS);
-    let mut stmt = db_guard.conn()
-        .prepare(&query)
+    let mut stmt = db_guard.conn().prepare(&query).map_err(|e| e.to_string())?;
+
+    let skill: Skill = stmt
+        .query_row([skill_id], row_to_skill)
         .map_err(|e| e.to_string())?;
 
-    let skill: Skill = stmt.query_row([skill_id], row_to_skill)
-        .map_err(|e| e.to_string())?;
-
-    db_guard.conn()
+    db_guard
+        .conn()
         .execute("DELETE FROM global_skills WHERE skill_id = ?", [skill_id])
         .map_err(|e| e.to_string())?;
 
     // Delete the skill file from global config
-    skill_writer::delete_global_skill(&skill)
-        .map_err(|e| e.to_string())?;
+    skill_writer::delete_global_skill(&skill).map_err(|e| e.to_string())?;
 
     Ok(())
 }
 
 #[tauri::command]
-pub fn toggle_global_skill(db: State<'_, Mutex<Database>>, id: i64, enabled: bool) -> Result<(), String> {
+pub fn toggle_global_skill(
+    db: State<'_, Mutex<Database>>,
+    id: i64,
+    enabled: bool,
+) -> Result<(), String> {
     let db_guard = db.lock().map_err(|e| e.to_string())?;
 
-    db_guard.conn()
+    db_guard
+        .conn()
         .execute(
             "UPDATE global_skills SET is_enabled = ? WHERE id = ?",
             params![enabled as i32, id],
@@ -243,20 +251,17 @@ pub fn toggle_global_skill(db: State<'_, Mutex<Database>>, id: i64, enabled: boo
          JOIN skills s ON gs.skill_id = s.id
          WHERE gs.id = ?"
     );
-    let mut stmt = db_guard.conn()
-        .prepare(&query)
-        .map_err(|e| e.to_string())?;
+    let mut stmt = db_guard.conn().prepare(&query).map_err(|e| e.to_string())?;
 
-    let skill: Skill = stmt.query_row([id], row_to_skill)
+    let skill: Skill = stmt
+        .query_row([id], row_to_skill)
         .map_err(|e| e.to_string())?;
 
     // Write or delete the file based on enabled state
     if enabled {
-        skill_writer::write_global_skill(&skill)
-            .map_err(|e| e.to_string())?;
+        skill_writer::write_global_skill(&skill).map_err(|e| e.to_string())?;
     } else {
-        skill_writer::delete_global_skill(&skill)
-            .map_err(|e| e.to_string())?;
+        skill_writer::delete_global_skill(&skill).map_err(|e| e.to_string())?;
     }
 
     Ok(())
@@ -272,19 +277,24 @@ pub fn assign_skill_to_project(
     let db_guard = db.lock().map_err(|e| e.to_string())?;
 
     // Get project path and skill details
-    let project_path: String = db_guard.conn()
-        .query_row("SELECT path FROM projects WHERE id = ?", [project_id], |row| row.get(0))
+    let project_path: String = db_guard
+        .conn()
+        .query_row(
+            "SELECT path FROM projects WHERE id = ?",
+            [project_id],
+            |row| row.get(0),
+        )
         .map_err(|e| e.to_string())?;
 
     let query = format!("SELECT {} FROM skills WHERE id = ?", SKILL_SELECT_FIELDS);
-    let mut stmt = db_guard.conn()
-        .prepare(&query)
+    let mut stmt = db_guard.conn().prepare(&query).map_err(|e| e.to_string())?;
+
+    let skill: Skill = stmt
+        .query_row([skill_id], row_to_skill)
         .map_err(|e| e.to_string())?;
 
-    let skill: Skill = stmt.query_row([skill_id], row_to_skill)
-        .map_err(|e| e.to_string())?;
-
-    db_guard.conn()
+    db_guard
+        .conn()
         .execute(
             "INSERT OR IGNORE INTO project_skills (project_id, skill_id) VALUES (?, ?)",
             params![project_id, skill_id],
@@ -307,19 +317,24 @@ pub fn remove_skill_from_project(
     let db_guard = db.lock().map_err(|e| e.to_string())?;
 
     // Get project path and skill details
-    let project_path: String = db_guard.conn()
-        .query_row("SELECT path FROM projects WHERE id = ?", [project_id], |row| row.get(0))
+    let project_path: String = db_guard
+        .conn()
+        .query_row(
+            "SELECT path FROM projects WHERE id = ?",
+            [project_id],
+            |row| row.get(0),
+        )
         .map_err(|e| e.to_string())?;
 
     let query = format!("SELECT {} FROM skills WHERE id = ?", SKILL_SELECT_FIELDS);
-    let mut stmt = db_guard.conn()
-        .prepare(&query)
+    let mut stmt = db_guard.conn().prepare(&query).map_err(|e| e.to_string())?;
+
+    let skill: Skill = stmt
+        .query_row([skill_id], row_to_skill)
         .map_err(|e| e.to_string())?;
 
-    let skill: Skill = stmt.query_row([skill_id], row_to_skill)
-        .map_err(|e| e.to_string())?;
-
-    db_guard.conn()
+    db_guard
+        .conn()
         .execute(
             "DELETE FROM project_skills WHERE project_id = ? AND skill_id = ?",
             params![project_id, skill_id],
@@ -341,7 +356,8 @@ pub fn toggle_project_skill(
 ) -> Result<(), String> {
     let db_guard = db.lock().map_err(|e| e.to_string())?;
 
-    db_guard.conn()
+    db_guard
+        .conn()
         .execute(
             "UPDATE project_skills SET is_enabled = ? WHERE id = ?",
             params![enabled as i32, assignment_id],
@@ -356,13 +372,13 @@ pub fn toggle_project_skill(
          JOIN skills s ON ps.skill_id = s.id
          WHERE ps.id = ?"
     );
-    let mut stmt = db_guard.conn()
-        .prepare(&query)
-        .map_err(|e| e.to_string())?;
+    let mut stmt = db_guard.conn().prepare(&query).map_err(|e| e.to_string())?;
 
-    let (project_path, skill): (String, Skill) = stmt.query_row([assignment_id], |row| {
-        Ok((row.get(0)?, row_to_skill_with_offset(row, 1)?))
-    }).map_err(|e| e.to_string())?;
+    let (project_path, skill): (String, Skill) = stmt
+        .query_row([assignment_id], |row| {
+            Ok((row.get(0)?, row_to_skill_with_offset(row, 1)?))
+        })
+        .map_err(|e| e.to_string())?;
 
     // Write or delete the file based on enabled state
     if enabled {
@@ -390,10 +406,7 @@ pub fn get_project_skills(
          WHERE ps.project_id = ?
          ORDER BY s.name"
     );
-    let mut stmt = db
-        .conn()
-        .prepare(&query)
-        .map_err(|e| e.to_string())?;
+    let mut stmt = db.conn().prepare(&query).map_err(|e| e.to_string())?;
 
     let skills = stmt
         .query_map([project_id], |row| {
@@ -426,13 +439,16 @@ fn row_to_skill_file(row: &rusqlite::Row) -> rusqlite::Result<SkillFile> {
 }
 
 #[tauri::command]
-pub fn get_skill_files(db: State<'_, Mutex<Database>>, skill_id: i64) -> Result<Vec<SkillFile>, String> {
+pub fn get_skill_files(
+    db: State<'_, Mutex<Database>>,
+    skill_id: i64,
+) -> Result<Vec<SkillFile>, String> {
     let db = db.lock().map_err(|e| e.to_string())?;
     let mut stmt = db
         .conn()
         .prepare(
             "SELECT id, skill_id, file_type, name, content, created_at, updated_at
-             FROM skill_files WHERE skill_id = ? ORDER BY file_type, name"
+             FROM skill_files WHERE skill_id = ? ORDER BY file_type, name",
         )
         .map_err(|e| e.to_string())?;
 
@@ -446,10 +462,14 @@ pub fn get_skill_files(db: State<'_, Mutex<Database>>, skill_id: i64) -> Result<
 }
 
 #[tauri::command]
-pub fn create_skill_file(db: State<'_, Mutex<Database>>, file: CreateSkillFileRequest) -> Result<SkillFile, String> {
+pub fn create_skill_file(
+    db: State<'_, Mutex<Database>>,
+    file: CreateSkillFileRequest,
+) -> Result<SkillFile, String> {
     let db_guard = db.lock().map_err(|e| e.to_string())?;
 
-    db_guard.conn()
+    db_guard
+        .conn()
         .execute(
             "INSERT INTO skill_files (skill_id, file_type, name, content)
              VALUES (?, ?, ?, ?)",
@@ -463,7 +483,7 @@ pub fn create_skill_file(db: State<'_, Mutex<Database>>, file: CreateSkillFileRe
         .conn()
         .prepare(
             "SELECT id, skill_id, file_type, name, content, created_at, updated_at
-             FROM skill_files WHERE id = ?"
+             FROM skill_files WHERE id = ?",
         )
         .map_err(|e| e.to_string())?;
 
@@ -491,7 +511,7 @@ pub fn update_skill_file(
         .conn()
         .prepare(
             "SELECT id, skill_id, file_type, name, content, created_at, updated_at
-             FROM skill_files WHERE id = ?"
+             FROM skill_files WHERE id = ?",
         )
         .map_err(|e| e.to_string())?;
 
@@ -508,4 +528,627 @@ pub fn delete_skill_file(db: State<'_, Mutex<Database>>, id: i64) -> Result<(), 
         .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+// ============================================================================
+// Database operations (for testing without Tauri state)
+// ============================================================================
+
+/// Create a skill directly in the database (for testing)
+pub fn create_skill_in_db(db: &Database, skill: &CreateSkillRequest) -> Result<Skill, String> {
+    let allowed_tools_json = skill
+        .allowed_tools
+        .as_ref()
+        .map(|t| serde_json::to_string(t).unwrap());
+    let tags_json = skill
+        .tags
+        .as_ref()
+        .map(|t| serde_json::to_string(t).unwrap());
+    let disable_model_invocation = skill.disable_model_invocation.unwrap_or(false) as i32;
+
+    db.conn()
+        .execute(
+            "INSERT INTO skills (name, description, content, skill_type, allowed_tools, argument_hint, model, disable_model_invocation, tags, source)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')",
+            rusqlite::params![skill.name, skill.description, skill.content, skill.skill_type, allowed_tools_json, skill.argument_hint, skill.model, disable_model_invocation, tags_json],
+        )
+        .map_err(|e| e.to_string())?;
+
+    let id = db.conn().last_insert_rowid();
+    get_skill_by_id(db, id)
+}
+
+/// Get a skill by ID directly from the database (for testing)
+pub fn get_skill_by_id(db: &Database, id: i64) -> Result<Skill, String> {
+    let query = format!("SELECT {} FROM skills WHERE id = ?", SKILL_SELECT_FIELDS);
+    let mut stmt = db.conn().prepare(&query).map_err(|e| e.to_string())?;
+
+    stmt.query_row([id], row_to_skill)
+        .map_err(|e| e.to_string())
+}
+
+/// Get all skills directly from the database (for testing)
+pub fn get_all_skills_from_db(db: &Database) -> Result<Vec<Skill>, String> {
+    let query = format!("SELECT {} FROM skills ORDER BY name", SKILL_SELECT_FIELDS);
+    let mut stmt = db.conn().prepare(&query).map_err(|e| e.to_string())?;
+
+    let skills = stmt
+        .query_map([], row_to_skill)
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(skills)
+}
+
+/// Update a skill directly in the database (for testing)
+pub fn update_skill_in_db(
+    db: &Database,
+    id: i64,
+    skill: &CreateSkillRequest,
+) -> Result<Skill, String> {
+    let allowed_tools_json = skill
+        .allowed_tools
+        .as_ref()
+        .map(|t| serde_json::to_string(t).unwrap());
+    let tags_json = skill
+        .tags
+        .as_ref()
+        .map(|t| serde_json::to_string(t).unwrap());
+    let disable_model_invocation = skill.disable_model_invocation.unwrap_or(false) as i32;
+
+    db.conn()
+        .execute(
+            "UPDATE skills SET name = ?, description = ?, content = ?, skill_type = ?, allowed_tools = ?, argument_hint = ?, model = ?, disable_model_invocation = ?, tags = ?, updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?",
+            rusqlite::params![skill.name, skill.description, skill.content, skill.skill_type, allowed_tools_json, skill.argument_hint, skill.model, disable_model_invocation, tags_json, id],
+        )
+        .map_err(|e| e.to_string())?;
+
+    get_skill_by_id(db, id)
+}
+
+/// Delete a skill directly from the database (for testing)
+pub fn delete_skill_from_db(db: &Database, id: i64) -> Result<(), String> {
+    db.conn()
+        .execute("DELETE FROM skills WHERE id = ?", [id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Create a skill file directly in the database (for testing)
+pub fn create_skill_file_in_db(
+    db: &Database,
+    file: &CreateSkillFileRequest,
+) -> Result<SkillFile, String> {
+    db.conn()
+        .execute(
+            "INSERT INTO skill_files (skill_id, file_type, name, content)
+             VALUES (?, ?, ?, ?)",
+            rusqlite::params![file.skill_id, file.file_type, file.name, file.content],
+        )
+        .map_err(|e| e.to_string())?;
+
+    let id = db.conn().last_insert_rowid();
+
+    let mut stmt = db
+        .conn()
+        .prepare(
+            "SELECT id, skill_id, file_type, name, content, created_at, updated_at
+             FROM skill_files WHERE id = ?",
+        )
+        .map_err(|e| e.to_string())?;
+
+    stmt.query_row([id], row_to_skill_file)
+        .map_err(|e| e.to_string())
+}
+
+/// Get skill files directly from the database (for testing)
+pub fn get_skill_files_from_db(db: &Database, skill_id: i64) -> Result<Vec<SkillFile>, String> {
+    let mut stmt = db
+        .conn()
+        .prepare(
+            "SELECT id, skill_id, file_type, name, content, created_at, updated_at
+             FROM skill_files WHERE skill_id = ? ORDER BY file_type, name",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let files = stmt
+        .query_map([skill_id], row_to_skill_file)
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(files)
+}
+
+/// Delete a skill file directly from the database (for testing)
+pub fn delete_skill_file_from_db(db: &Database, id: i64) -> Result<(), String> {
+    db.conn()
+        .execute("DELETE FROM skill_files WHERE id = ?", [id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_command_skill() -> CreateSkillRequest {
+        CreateSkillRequest {
+            name: "test-command".to_string(),
+            description: Some("A test command skill".to_string()),
+            content: "You are a helpful assistant for testing.".to_string(),
+            skill_type: "command".to_string(),
+            allowed_tools: Some(vec!["Read".to_string(), "Write".to_string()]),
+            argument_hint: Some("<file>".to_string()),
+            model: Some("sonnet".to_string()),
+            disable_model_invocation: Some(false),
+            tags: Some(vec!["test".to_string(), "example".to_string()]),
+        }
+    }
+
+    fn sample_agent_skill() -> CreateSkillRequest {
+        CreateSkillRequest {
+            name: "test-agent".to_string(),
+            description: Some("A test agent skill".to_string()),
+            content: "You are an agent that helps with code reviews.".to_string(),
+            skill_type: "skill".to_string(),
+            allowed_tools: Some(vec![
+                "Read".to_string(),
+                "Grep".to_string(),
+                "Glob".to_string(),
+            ]),
+            argument_hint: None,
+            model: Some("opus".to_string()),
+            disable_model_invocation: Some(true),
+            tags: Some(vec!["review".to_string()]),
+        }
+    }
+
+    fn sample_minimal_skill() -> CreateSkillRequest {
+        CreateSkillRequest {
+            name: "minimal".to_string(),
+            description: None,
+            content: "Minimal skill content.".to_string(),
+            skill_type: "command".to_string(),
+            allowed_tools: None,
+            argument_hint: None,
+            model: None,
+            disable_model_invocation: None,
+            tags: None,
+        }
+    }
+
+    // ========================================================================
+    // Create Skill tests
+    // ========================================================================
+
+    #[test]
+    fn test_create_command_skill() {
+        let db = Database::in_memory().unwrap();
+        let req = sample_command_skill();
+
+        let skill = create_skill_in_db(&db, &req).unwrap();
+
+        assert_eq!(skill.name, "test-command");
+        assert_eq!(skill.description, Some("A test command skill".to_string()));
+        assert_eq!(skill.content, "You are a helpful assistant for testing.");
+        assert_eq!(skill.skill_type, "command");
+        assert_eq!(
+            skill.allowed_tools,
+            Some(vec!["Read".to_string(), "Write".to_string()])
+        );
+        assert_eq!(skill.argument_hint, Some("<file>".to_string()));
+        assert_eq!(skill.model, Some("sonnet".to_string()));
+        assert!(!skill.disable_model_invocation);
+        assert_eq!(
+            skill.tags,
+            Some(vec!["test".to_string(), "example".to_string()])
+        );
+        assert_eq!(skill.source, "manual");
+    }
+
+    #[test]
+    fn test_create_agent_skill() {
+        let db = Database::in_memory().unwrap();
+        let req = sample_agent_skill();
+
+        let skill = create_skill_in_db(&db, &req).unwrap();
+
+        assert_eq!(skill.name, "test-agent");
+        assert_eq!(skill.skill_type, "skill");
+        assert!(skill.disable_model_invocation);
+        assert_eq!(skill.model, Some("opus".to_string()));
+    }
+
+    #[test]
+    fn test_create_minimal_skill() {
+        let db = Database::in_memory().unwrap();
+        let req = sample_minimal_skill();
+
+        let skill = create_skill_in_db(&db, &req).unwrap();
+
+        assert_eq!(skill.name, "minimal");
+        assert!(skill.description.is_none());
+        assert!(skill.allowed_tools.is_none());
+        assert!(skill.argument_hint.is_none());
+        assert!(skill.model.is_none());
+        assert!(!skill.disable_model_invocation);
+        assert!(skill.tags.is_none());
+    }
+
+    #[test]
+    fn test_create_duplicate_skill_fails() {
+        let db = Database::in_memory().unwrap();
+        let req = sample_command_skill();
+
+        create_skill_in_db(&db, &req).unwrap();
+        let result = create_skill_in_db(&db, &req);
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("UNIQUE constraint failed"));
+    }
+
+    // ========================================================================
+    // Get Skill tests
+    // ========================================================================
+
+    #[test]
+    fn test_get_skill_by_id() {
+        let db = Database::in_memory().unwrap();
+        let req = sample_command_skill();
+        let created = create_skill_in_db(&db, &req).unwrap();
+
+        let fetched = get_skill_by_id(&db, created.id).unwrap();
+
+        assert_eq!(fetched.id, created.id);
+        assert_eq!(fetched.name, created.name);
+    }
+
+    #[test]
+    fn test_get_skill_by_id_not_found() {
+        let db = Database::in_memory().unwrap();
+
+        let result = get_skill_by_id(&db, 9999);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_all_skills_empty() {
+        let db = Database::in_memory().unwrap();
+
+        let skills = get_all_skills_from_db(&db).unwrap();
+
+        assert!(skills.is_empty());
+    }
+
+    #[test]
+    fn test_get_all_skills_sorted_by_name() {
+        let db = Database::in_memory().unwrap();
+
+        create_skill_in_db(
+            &db,
+            &CreateSkillRequest {
+                name: "zebra-skill".to_string(),
+                ..sample_minimal_skill()
+            },
+        )
+        .unwrap();
+
+        create_skill_in_db(
+            &db,
+            &CreateSkillRequest {
+                name: "alpha-skill".to_string(),
+                ..sample_minimal_skill()
+            },
+        )
+        .unwrap();
+
+        create_skill_in_db(
+            &db,
+            &CreateSkillRequest {
+                name: "middle-skill".to_string(),
+                ..sample_minimal_skill()
+            },
+        )
+        .unwrap();
+
+        let skills = get_all_skills_from_db(&db).unwrap();
+
+        assert_eq!(skills.len(), 3);
+        assert_eq!(skills[0].name, "alpha-skill");
+        assert_eq!(skills[1].name, "middle-skill");
+        assert_eq!(skills[2].name, "zebra-skill");
+    }
+
+    // ========================================================================
+    // Update Skill tests
+    // ========================================================================
+
+    #[test]
+    fn test_update_skill() {
+        let db = Database::in_memory().unwrap();
+        let req = sample_command_skill();
+        let created = create_skill_in_db(&db, &req).unwrap();
+
+        let update_req = CreateSkillRequest {
+            name: "updated-skill".to_string(),
+            description: Some("Updated description".to_string()),
+            content: "Updated content.".to_string(),
+            skill_type: "skill".to_string(),
+            allowed_tools: Some(vec!["Bash".to_string()]),
+            argument_hint: Some("<new-hint>".to_string()),
+            model: Some("haiku".to_string()),
+            disable_model_invocation: Some(true),
+            tags: Some(vec!["updated".to_string()]),
+        };
+
+        let updated = update_skill_in_db(&db, created.id, &update_req).unwrap();
+
+        assert_eq!(updated.id, created.id);
+        assert_eq!(updated.name, "updated-skill");
+        assert_eq!(updated.description, Some("Updated description".to_string()));
+        assert_eq!(updated.content, "Updated content.");
+        assert_eq!(updated.skill_type, "skill");
+        assert_eq!(updated.model, Some("haiku".to_string()));
+        assert!(updated.disable_model_invocation);
+    }
+
+    #[test]
+    fn test_update_skill_not_found() {
+        let db = Database::in_memory().unwrap();
+        let req = sample_minimal_skill();
+
+        let result = update_skill_in_db(&db, 9999, &req);
+
+        assert!(result.is_err());
+    }
+
+    // ========================================================================
+    // Delete Skill tests
+    // ========================================================================
+
+    #[test]
+    fn test_delete_skill() {
+        let db = Database::in_memory().unwrap();
+        let req = sample_command_skill();
+        let created = create_skill_in_db(&db, &req).unwrap();
+
+        let result = delete_skill_from_db(&db, created.id);
+        assert!(result.is_ok());
+
+        let fetch_result = get_skill_by_id(&db, created.id);
+        assert!(fetch_result.is_err());
+    }
+
+    #[test]
+    fn test_delete_skill_cascades_to_files() {
+        let db = Database::in_memory().unwrap();
+        let skill = create_skill_in_db(&db, &sample_command_skill()).unwrap();
+
+        let file = create_skill_file_in_db(
+            &db,
+            &CreateSkillFileRequest {
+                skill_id: skill.id,
+                file_type: "reference".to_string(),
+                name: "test.md".to_string(),
+                content: "Test content".to_string(),
+            },
+        )
+        .unwrap();
+
+        delete_skill_from_db(&db, skill.id).unwrap();
+
+        // Verify files were also deleted (foreign key cascade)
+        let files = get_skill_files_from_db(&db, skill.id).unwrap();
+        assert!(files.is_empty());
+    }
+
+    // ========================================================================
+    // Skill File tests
+    // ========================================================================
+
+    #[test]
+    fn test_create_skill_file() {
+        let db = Database::in_memory().unwrap();
+        let skill = create_skill_in_db(&db, &sample_command_skill()).unwrap();
+
+        let file = create_skill_file_in_db(
+            &db,
+            &CreateSkillFileRequest {
+                skill_id: skill.id,
+                file_type: "reference".to_string(),
+                name: "example.md".to_string(),
+                content: "# Reference\n\nSome reference content.".to_string(),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(file.skill_id, skill.id);
+        assert_eq!(file.file_type, "reference");
+        assert_eq!(file.name, "example.md");
+        assert!(file.content.contains("Reference"));
+    }
+
+    #[test]
+    fn test_create_skill_file_types() {
+        let db = Database::in_memory().unwrap();
+        let skill = create_skill_in_db(&db, &sample_command_skill()).unwrap();
+
+        // Reference file
+        let ref_file = create_skill_file_in_db(
+            &db,
+            &CreateSkillFileRequest {
+                skill_id: skill.id,
+                file_type: "reference".to_string(),
+                name: "ref.md".to_string(),
+                content: "Reference".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(ref_file.file_type, "reference");
+
+        // Asset file
+        let asset_file = create_skill_file_in_db(
+            &db,
+            &CreateSkillFileRequest {
+                skill_id: skill.id,
+                file_type: "asset".to_string(),
+                name: "data.json".to_string(),
+                content: "{}".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(asset_file.file_type, "asset");
+
+        // Script file
+        let script_file = create_skill_file_in_db(
+            &db,
+            &CreateSkillFileRequest {
+                skill_id: skill.id,
+                file_type: "script".to_string(),
+                name: "run.sh".to_string(),
+                content: "#!/bin/bash".to_string(),
+            },
+        )
+        .unwrap();
+        assert_eq!(script_file.file_type, "script");
+    }
+
+    #[test]
+    fn test_get_skill_files_sorted() {
+        let db = Database::in_memory().unwrap();
+        let skill = create_skill_in_db(&db, &sample_command_skill()).unwrap();
+
+        create_skill_file_in_db(
+            &db,
+            &CreateSkillFileRequest {
+                skill_id: skill.id,
+                file_type: "script".to_string(),
+                name: "z-script.sh".to_string(),
+                content: "content".to_string(),
+            },
+        )
+        .unwrap();
+
+        create_skill_file_in_db(
+            &db,
+            &CreateSkillFileRequest {
+                skill_id: skill.id,
+                file_type: "asset".to_string(),
+                name: "a-asset.json".to_string(),
+                content: "content".to_string(),
+            },
+        )
+        .unwrap();
+
+        create_skill_file_in_db(
+            &db,
+            &CreateSkillFileRequest {
+                skill_id: skill.id,
+                file_type: "reference".to_string(),
+                name: "m-ref.md".to_string(),
+                content: "content".to_string(),
+            },
+        )
+        .unwrap();
+
+        let files = get_skill_files_from_db(&db, skill.id).unwrap();
+
+        assert_eq!(files.len(), 3);
+        // Sorted by file_type first (asset, reference, script), then name
+        assert_eq!(files[0].file_type, "asset");
+        assert_eq!(files[1].file_type, "reference");
+        assert_eq!(files[2].file_type, "script");
+    }
+
+    #[test]
+    fn test_delete_skill_file() {
+        let db = Database::in_memory().unwrap();
+        let skill = create_skill_in_db(&db, &sample_command_skill()).unwrap();
+
+        let file = create_skill_file_in_db(
+            &db,
+            &CreateSkillFileRequest {
+                skill_id: skill.id,
+                file_type: "reference".to_string(),
+                name: "to-delete.md".to_string(),
+                content: "content".to_string(),
+            },
+        )
+        .unwrap();
+
+        delete_skill_file_from_db(&db, file.id).unwrap();
+
+        let files = get_skill_files_from_db(&db, skill.id).unwrap();
+        assert!(files.is_empty());
+    }
+
+    #[test]
+    fn test_skill_file_unique_constraint() {
+        let db = Database::in_memory().unwrap();
+        let skill = create_skill_in_db(&db, &sample_command_skill()).unwrap();
+
+        create_skill_file_in_db(
+            &db,
+            &CreateSkillFileRequest {
+                skill_id: skill.id,
+                file_type: "reference".to_string(),
+                name: "same-name.md".to_string(),
+                content: "first".to_string(),
+            },
+        )
+        .unwrap();
+
+        // Same skill, same file_type, same name should fail
+        let result = create_skill_file_in_db(
+            &db,
+            &CreateSkillFileRequest {
+                skill_id: skill.id,
+                file_type: "reference".to_string(),
+                name: "same-name.md".to_string(),
+                content: "second".to_string(),
+            },
+        );
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("UNIQUE constraint failed"));
+    }
+
+    // ========================================================================
+    // parse_json_array tests
+    // ========================================================================
+
+    #[test]
+    fn test_parse_json_array_valid() {
+        let result = parse_json_array(Some(r#"["Read", "Write", "Edit"]"#.to_string()));
+        assert_eq!(
+            result,
+            Some(vec![
+                "Read".to_string(),
+                "Write".to_string(),
+                "Edit".to_string()
+            ])
+        );
+    }
+
+    #[test]
+    fn test_parse_json_array_empty() {
+        let result = parse_json_array(Some("[]".to_string()));
+        assert_eq!(result, Some(vec![]));
+    }
+
+    #[test]
+    fn test_parse_json_array_none() {
+        let result = parse_json_array(None);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_parse_json_array_invalid() {
+        let result = parse_json_array(Some("not valid json".to_string()));
+        assert_eq!(result, None);
+    }
 }
