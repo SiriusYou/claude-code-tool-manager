@@ -41,6 +41,23 @@ Create, organize, and assign MCP servers to projects or global settings.
 - **Paste-to-import**: Quickly import MCP configs from JSON or `claude mcp add` commands
 - **Multiple transport types**: Support for stdio, HTTP, and SSE MCP servers
 
+![MCP Tool List](imgs/toollist.png)
+
+### MCP Execution & Exploration
+
+Interactively execute MCP tools directly from the Tool Manager to understand what they do and see real results.
+
+- **Tool Discovery**: After a successful MCP test, click "Execute Tools" to browse all available tools
+- **Interactive Execution**: Fill in parameters using a dynamic form and execute any tool
+- **JSON Schema Forms**: Automatic form generation from tool input schemas with support for all JSON types
+- **Result Visualization**: View tool results with JSON formatting and one-click copy
+- **Execution History**: Track previous executions within each session and quickly re-run them
+- **Session Management**: Persistent connections to stdio MCP servers during your session
+
+![Execute MCP Tool](imgs/executemcptool.png)
+
+![Execution History](imgs/executionhistory.png)
+
 ### Skills (Slash Commands & Agent Skills)
 
 Define custom slash commands and agent skills with full control over tool access and model behavior.
