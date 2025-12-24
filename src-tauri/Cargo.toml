@@ -1,6 +1,6 @@
 [package]
 name = "claude-code-tool-manager"
-version = "1.4.0"
+version = "1.5.0"
 description = "Desktop app to manage MCP servers, Skills, and Sub-Agents for Claude Code"
 authors = ["you"]
 edition = "2021"
@@ -63,6 +63,14 @@ urlencoding = "2"
 
 # UUID generation for session IDs
 uuid = { version = "1", features = ["v4"] }
+
+# MCP Server (exposing our own MCP server)
+rmcp = { version = "0.12", features = ["server", "macros", "transport-streamable-http-server"] }
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors"] }
+schemars = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [features]
 default = ["custom-protocol"]
