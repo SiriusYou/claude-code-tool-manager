@@ -13,6 +13,8 @@
 	let { project, onRemove, onClick }: Props = $props();
 
 	let showMenu = $state(false);
+	let menuAbove = $state(false);
+	let menuButton: HTMLButtonElement;
 
 	// Skills and agents for this project
 	let projectSkills = $state<ProjectSkill[]>([]);
@@ -34,6 +36,17 @@
 
 	function closeMenu() {
 		showMenu = false;
+	}
+
+	function toggleMenu(e: MouseEvent) {
+		e.stopPropagation();
+		if (!showMenu) {
+			const rect = menuButton.getBoundingClientRect();
+			const spaceBelow = window.innerHeight - rect.bottom;
+			const menuHeight = 140;
+			menuAbove = spaceBelow < menuHeight;
+		}
+		showMenu = !showMenu;
 	}
 
 	// Count enabled vs total MCPs
@@ -93,10 +106,8 @@
 
 		<div class="relative">
 			<button
-				onclick={(e) => {
-					e.stopPropagation();
-					showMenu = !showMenu;
-				}}
+				bind:this={menuButton}
+				onclick={toggleMenu}
 				class="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
 			>
 				<MoreVertical class="w-4 h-4" />
@@ -106,7 +117,8 @@
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<div
-					class="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-10"
+					class="absolute right-0 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-10
+						{menuAbove ? 'bottom-full mb-1' : 'top-full mt-1'}"
 					onclick={(e) => e.stopPropagation()}
 					role="menu"
 				>
