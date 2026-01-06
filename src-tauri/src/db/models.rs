@@ -19,6 +19,7 @@ pub struct Mcp {
     pub source: String,
     pub source_path: Option<String>,
     pub is_enabled_global: bool,
+    pub is_favorite: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -50,6 +51,7 @@ pub struct Project {
     pub last_scanned_at: Option<String>,
     #[serde(default = "default_editor_type")]
     pub editor_type: String, // "claude_code" or "opencode"
+    pub is_favorite: bool,
     pub created_at: String,
     pub updated_at: String,
     #[serde(default)]
@@ -122,6 +124,8 @@ pub struct Command {
     pub model: Option<String>,
     pub tags: Option<Vec<String>>,
     pub source: String,
+    pub source_path: Option<String>,
+    pub is_favorite: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -169,6 +173,8 @@ pub struct Skill {
     pub disable_model_invocation: bool,
     pub tags: Option<Vec<String>>,
     pub source: String,
+    pub source_path: Option<String>,
+    pub is_favorite: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -239,6 +245,8 @@ pub struct SubAgent {
     pub skills: Option<Vec<String>>,
     pub tags: Option<Vec<String>>,
     pub source: String,
+    pub source_path: Option<String>,
+    pub is_favorite: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -407,13 +415,16 @@ pub struct GlobalHook {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
-    pub default_editor: String, // "claude_code" or "opencode"
+    /// List of enabled editor IDs (e.g., ["claude_code", "opencode"])
+    /// When an editor is enabled, skills/commands/subagents/MCPs sync to it
+    pub enabled_editors: Vec<String>,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            default_editor: "claude_code".to_string(),
+            // By default, only Claude Code is enabled
+            enabled_editors: vec!["claude_code".to_string()],
         }
     }
 }
@@ -438,6 +449,7 @@ pub struct EditorInfo {
     pub id: String,          // "claude_code" or "opencode"
     pub name: String,        // "Claude Code" or "OpenCode"
     pub is_installed: bool,  // Whether config directory exists
+    pub is_enabled: bool,    // Whether syncing to this editor is enabled
     pub config_path: String, // Path to main config file
 }
 
@@ -470,6 +482,7 @@ mod tests {
             source: "manual".to_string(),
             source_path: Some("/path".to_string()),
             is_enabled_global: true,
+            is_favorite: false,
             created_at: "2024-01-01".to_string(),
             updated_at: "2024-01-01".to_string(),
         };
@@ -490,6 +503,7 @@ mod tests {
             "type": "stdio",
             "source": "manual",
             "isEnabledGlobal": true,
+            "isFavorite": false,
             "createdAt": "2024",
             "updatedAt": "2024"
         }"#;
@@ -554,6 +568,7 @@ mod tests {
             has_settings_file: false,
             last_scanned_at: Some("2024-01-01".to_string()),
             editor_type: "claude_code".to_string(),
+            is_favorite: false,
             created_at: "2024-01-01".to_string(),
             updated_at: "2024-01-01".to_string(),
             assigned_mcps: vec![],
@@ -563,6 +578,7 @@ mod tests {
         assert!(json.contains("hasMcpFile"));
         assert!(json.contains("hasSettingsFile"));
         assert!(json.contains("editorType"));
+        assert!(json.contains("isFavorite"));
     }
 
     #[test]
@@ -573,6 +589,7 @@ mod tests {
             "path": "/test",
             "hasMcpFile": false,
             "hasSettingsFile": false,
+            "isFavorite": false,
             "createdAt": "2024",
             "updatedAt": "2024",
             "assignedMcps": []
@@ -598,6 +615,8 @@ mod tests {
             model: Some("sonnet".to_string()),
             tags: Some(vec!["test".to_string()]),
             source: "manual".to_string(),
+            source_path: Some("/path/to/command.md".to_string()),
+            is_favorite: false,
             created_at: "2024-01-01".to_string(),
             updated_at: "2024-01-01".to_string(),
         };
@@ -607,6 +626,7 @@ mod tests {
 
         assert_eq!(command.name, parsed.name);
         assert_eq!(command.argument_hint, parsed.argument_hint);
+        assert_eq!(command.source_path, parsed.source_path);
     }
 
     #[test]
@@ -641,6 +661,8 @@ mod tests {
             disable_model_invocation: false,
             tags: Some(vec!["test".to_string()]),
             source: "manual".to_string(),
+            source_path: Some("/path/to/skill".to_string()),
+            is_favorite: false,
             created_at: "2024-01-01".to_string(),
             updated_at: "2024-01-01".to_string(),
         };
@@ -653,6 +675,7 @@ mod tests {
             skill.disable_model_invocation,
             parsed.disable_model_invocation
         );
+        assert_eq!(skill.source_path, parsed.source_path);
     }
 
     #[test]
@@ -688,6 +711,8 @@ mod tests {
             skills: Some(vec!["lint".to_string()]),
             tags: Some(vec!["review".to_string()]),
             source: "manual".to_string(),
+            source_path: None,
+            is_favorite: false,
             created_at: "2024-01-01".to_string(),
             updated_at: "2024-01-01".to_string(),
         };
@@ -877,20 +902,22 @@ mod tests {
     #[test]
     fn test_app_settings_default() {
         let settings = AppSettings::default();
-        assert_eq!(settings.default_editor, "claude_code");
+        assert_eq!(settings.enabled_editors, vec!["claude_code".to_string()]);
     }
 
     #[test]
     fn test_app_settings_serde() {
         let settings = AppSettings {
-            default_editor: "opencode".to_string(),
+            enabled_editors: vec!["claude_code".to_string(), "opencode".to_string()],
         };
 
         let json = serde_json::to_string(&settings).unwrap();
-        assert!(json.contains("defaultEditor"));
+        assert!(json.contains("enabledEditors"));
 
         let parsed: AppSettings = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.default_editor, "opencode");
+        assert_eq!(parsed.enabled_editors.len(), 2);
+        assert!(parsed.enabled_editors.contains(&"claude_code".to_string()));
+        assert!(parsed.enabled_editors.contains(&"opencode".to_string()));
     }
 
     // =========================================================================
@@ -987,6 +1014,7 @@ mod tests {
             source: "manual".to_string(),
             source_path: None,
             is_enabled_global: false,
+            is_favorite: false,
             created_at: "2024".to_string(),
             updated_at: "2024".to_string(),
         };

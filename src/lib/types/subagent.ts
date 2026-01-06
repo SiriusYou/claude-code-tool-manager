@@ -9,6 +9,8 @@ export interface SubAgent {
 	skills?: string[];
 	tags?: string[];
 	source: string;
+	sourcePath?: string;
+	isFavorite: boolean;
 	createdAt: string;
 	updatedAt: string;
 }

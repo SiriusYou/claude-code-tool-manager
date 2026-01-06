@@ -272,6 +272,8 @@ mod tests {
             disable_model_invocation: true,
             tags: None,
             source: "manual".to_string(),
+            source_path: None,
+            is_favorite: false,
             created_at: "2024-01-01".to_string(),
             updated_at: "2024-01-01".to_string(),
         }
@@ -288,6 +290,8 @@ mod tests {
             disable_model_invocation: false,
             tags: None,
             source: "manual".to_string(),
+            source_path: None,
+            is_favorite: false,
             created_at: "2024-01-01".to_string(),
             updated_at: "2024-01-01".to_string(),
         }

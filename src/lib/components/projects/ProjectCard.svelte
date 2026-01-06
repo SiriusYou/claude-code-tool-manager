@@ -1,16 +1,17 @@
 <script lang="ts">
 	import type { Project, ProjectSkill, ProjectSubAgent } from '$lib/types';
 	import { projectsStore, notifications, skillLibrary, subagentLibrary } from '$lib/stores';
-	import { FolderOpen, MoreVertical, Trash2, RefreshCw, ExternalLink, Plug, Sparkles, Bot } from 'lucide-svelte';
+	import { FolderOpen, MoreVertical, Trash2, RefreshCw, ExternalLink, Plug, Sparkles, Bot, Heart } from 'lucide-svelte';
 	import { open } from '@tauri-apps/plugin-shell';
 
 	type Props = {
 		project: Project;
 		onRemove?: (project: Project) => void;
 		onClick?: () => void;
+		onFavoriteToggle?: (project: Project, favorite: boolean) => void;
 	};
 
-	let { project, onRemove, onClick }: Props = $props();
+	let { project, onRemove, onClick, onFavoriteToggle }: Props = $props();
 
 	let showMenu = $state(false);
 	let menuAbove = $state(false);
@@ -104,14 +105,29 @@
 			</p>
 		</div>
 
-		<div class="relative">
-			<button
-				bind:this={menuButton}
-				onclick={toggleMenu}
-				class="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-			>
-				<MoreVertical class="w-4 h-4" />
-			</button>
+		<div class="flex items-center gap-1">
+			{#if onFavoriteToggle}
+				<button
+					onclick={(e) => {
+						e.stopPropagation();
+						onFavoriteToggle(project, !project.isFavorite);
+					}}
+					class="p-1.5 rounded-lg transition-colors {project.isFavorite
+						? 'text-rose-500 hover:text-rose-600'
+						: 'text-gray-300 hover:text-rose-400 dark:text-gray-600 dark:hover:text-rose-400'}"
+					title={project.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+				>
+					<Heart class="w-4 h-4" fill={project.isFavorite ? 'currentColor' : 'none'} />
+				</button>
+			{/if}
+			<div class="relative">
+				<button
+					bind:this={menuButton}
+					onclick={toggleMenu}
+					class="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+				>
+					<MoreVertical class="w-4 h-4" />
+				</button>
 
 			{#if showMenu}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -161,6 +177,7 @@
 					{/if}
 				</div>
 			{/if}
+			</div>
 		</div>
 	</div>
 

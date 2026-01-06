@@ -25,7 +25,13 @@ class McpLibraryState {
 			result = result.filter((m) => m.type === this.selectedType);
 		}
 
-		return result;
+		// Sort by favorites first, then by name
+		return [...result].sort((a, b) => {
+			if (a.isFavorite !== b.isFavorite) {
+				return a.isFavorite ? -1 : 1;
+			}
+			return a.name.localeCompare(b.name);
+		});
 	});
 
 	mcpCount = $derived.by(() => ({
@@ -85,6 +91,10 @@ class McpLibraryState {
 		console.log(`[mcpLibrary] Toggling global MCP id=${id} enabled=${enabled}`);
 		await invoke('toggle_global_mcp', { id, enabled });
 		this.mcps = this.mcps.map((m) => (m.id === id ? { ...m, isEnabledGlobal: enabled } : m));
+	}
+
+	updateMcp(mcp: Mcp): void {
+		this.mcps = this.mcps.map((m) => (m.id === mcp.id ? mcp : m));
 	}
 
 	getMcpById(id: number): Mcp | undefined {

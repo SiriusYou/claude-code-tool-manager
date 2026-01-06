@@ -3,6 +3,7 @@ use crate::db::models::{
 };
 use crate::db::schema::Database;
 use crate::services::skill_writer;
+use crate::commands::settings::get_enabled_editors_from_db;
 use regex::Regex;
 use rusqlite::params;
 use std::path::Path;
@@ -178,7 +179,7 @@ fn parse_json_array(s: Option<String>) -> Option<Vec<String>> {
     s.and_then(|v| serde_json::from_str(&v).ok())
 }
 
-const SKILL_SELECT_FIELDS: &str = "id, name, description, content, allowed_tools, model, disable_model_invocation, tags, source, created_at, updated_at";
+const SKILL_SELECT_FIELDS: &str = "id, name, description, content, allowed_tools, model, disable_model_invocation, tags, source, source_path, is_favorite, created_at, updated_at";
 
 fn row_to_skill(row: &rusqlite::Row) -> rusqlite::Result<Skill> {
     Ok(Skill {
@@ -191,8 +192,10 @@ fn row_to_skill(row: &rusqlite::Row) -> rusqlite::Result<Skill> {
         disable_model_invocation: row.get::<_, i32>(6).unwrap_or(0) != 0,
         tags: parse_json_array(row.get(7)?),
         source: row.get(8)?,
-        created_at: row.get(9)?,
-        updated_at: row.get(10)?,
+        source_path: row.get(9)?,
+        is_favorite: row.get::<_, i32>(10).unwrap_or(0) != 0,
+        created_at: row.get(11)?,
+        updated_at: row.get(12)?,
     })
 }
 
@@ -207,8 +210,10 @@ fn row_to_skill_with_offset(row: &rusqlite::Row, offset: usize) -> rusqlite::Res
         disable_model_invocation: row.get::<_, i32>(offset + 6).unwrap_or(0) != 0,
         tags: parse_json_array(row.get(offset + 7)?),
         source: row.get(offset + 8)?,
-        created_at: row.get(offset + 9)?,
-        updated_at: row.get(offset + 10)?,
+        source_path: row.get(offset + 9)?,
+        is_favorite: row.get::<_, i32>(offset + 10).unwrap_or(0) != 0,
+        created_at: row.get(offset + 11)?,
+        updated_at: row.get(offset + 12)?,
     })
 }
 
@@ -326,7 +331,7 @@ pub fn get_global_skills(db: State<'_, Arc<Mutex<Database>>>) -> Result<Vec<Glob
     let db = db.lock().map_err(|e| e.to_string())?;
     let query = format!(
         "SELECT gs.id, gs.skill_id, gs.is_enabled,
-                s.id, s.name, s.description, s.content, s.allowed_tools, s.model, s.disable_model_invocation, s.tags, s.source, s.created_at, s.updated_at
+                s.id, s.name, s.description, s.content, s.allowed_tools, s.model, s.disable_model_invocation, s.tags, s.source, s.source_path, s.is_favorite, s.created_at, s.updated_at
          FROM global_skills gs
          JOIN skills s ON gs.skill_id = s.id
          ORDER BY s.name"
@@ -369,8 +374,15 @@ pub fn add_global_skill(db: State<'_, Arc<Mutex<Database>>>, skill_id: i64) -> R
         )
         .map_err(|e| e.to_string())?;
 
-    // Write the skill file to global config
-    skill_writer::write_global_skill(&skill).map_err(|e| e.to_string())?;
+    // Write the skill file to all enabled editors
+    let enabled_editors = get_enabled_editors_from_db(&db_guard);
+    for editor in &enabled_editors {
+        match editor.as_str() {
+            "claude_code" => skill_writer::write_global_skill(&skill).map_err(|e| e.to_string())?,
+            "opencode" => skill_writer::write_global_skill_opencode(&skill).map_err(|e| e.to_string())?,
+            _ => {} // Unknown editor, skip
+        }
+    }
 
     Ok(())
 }
@@ -395,8 +407,15 @@ pub fn remove_global_skill(
         .execute("DELETE FROM global_skills WHERE skill_id = ?", [skill_id])
         .map_err(|e| e.to_string())?;
 
-    // Delete the skill file from global config
-    skill_writer::delete_global_skill(&skill).map_err(|e| e.to_string())?;
+    // Delete the skill file from all enabled editors
+    let enabled_editors = get_enabled_editors_from_db(&db_guard);
+    for editor in &enabled_editors {
+        match editor.as_str() {
+            "claude_code" => skill_writer::delete_global_skill(&skill).map_err(|e| e.to_string())?,
+            "opencode" => skill_writer::delete_global_skill_opencode(&skill).map_err(|e| e.to_string())?,
+            _ => {}
+        }
+    }
 
     Ok(())
 }
@@ -419,7 +438,7 @@ pub fn toggle_global_skill(
 
     // Get the skill details
     let query = format!(
-        "SELECT s.id, s.name, s.description, s.content, s.allowed_tools, s.model, s.disable_model_invocation, s.tags, s.source, s.created_at, s.updated_at
+        "SELECT s.id, s.name, s.description, s.content, s.allowed_tools, s.model, s.disable_model_invocation, s.tags, s.source, s.source_path, s.is_favorite, s.created_at, s.updated_at
          FROM global_skills gs
          JOIN skills s ON gs.skill_id = s.id
          WHERE gs.id = ?"
@@ -430,18 +449,29 @@ pub fn toggle_global_skill(
         .query_row([id], row_to_skill)
         .map_err(|e| e.to_string())?;
 
-    // Write or delete the file based on enabled state
-    if enabled {
-        skill_writer::write_global_skill(&skill).map_err(|e| e.to_string())?;
-    } else {
-        skill_writer::delete_global_skill(&skill).map_err(|e| e.to_string())?;
+    // Write or delete the file for all enabled editors
+    let enabled_editors = get_enabled_editors_from_db(&db_guard);
+    for editor in &enabled_editors {
+        if enabled {
+            match editor.as_str() {
+                "claude_code" => skill_writer::write_global_skill(&skill).map_err(|e| e.to_string())?,
+                "opencode" => skill_writer::write_global_skill_opencode(&skill).map_err(|e| e.to_string())?,
+                _ => {}
+            }
+        } else {
+            match editor.as_str() {
+                "claude_code" => skill_writer::delete_global_skill(&skill).map_err(|e| e.to_string())?,
+                "opencode" => skill_writer::delete_global_skill_opencode(&skill).map_err(|e| e.to_string())?,
+                _ => {}
+            }
+        }
     }
 
     Ok(())
 }
 
 // Project Skills
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub fn assign_skill_to_project(
     db: State<'_, Arc<Mutex<Database>>>,
     project_id: i64,
@@ -449,7 +479,7 @@ pub fn assign_skill_to_project(
 ) -> Result<(), String> {
     let db_guard = db.lock().map_err(|e| e.to_string())?;
 
-    // Get project path and skill details
+    // Get project path
     let project_path: String = db_guard
         .conn()
         .query_row(
@@ -474,14 +504,22 @@ pub fn assign_skill_to_project(
         )
         .map_err(|e| e.to_string())?;
 
-    // Write the skill file to project config
-    skill_writer::write_project_skill(Path::new(&project_path), &skill)
-        .map_err(|e| e.to_string())?;
+    // Write the skill file to all enabled editors
+    let enabled_editors = get_enabled_editors_from_db(&db_guard);
+    for editor in &enabled_editors {
+        match editor.as_str() {
+            "claude_code" => skill_writer::write_project_skill(Path::new(&project_path), &skill)
+                .map_err(|e| e.to_string())?,
+            "opencode" => skill_writer::write_project_skill_opencode(Path::new(&project_path), &skill)
+                .map_err(|e| e.to_string())?,
+            _ => {}
+        }
+    }
 
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub fn remove_skill_from_project(
     db: State<'_, Arc<Mutex<Database>>>,
     project_id: i64,
@@ -489,7 +527,7 @@ pub fn remove_skill_from_project(
 ) -> Result<(), String> {
     let db_guard = db.lock().map_err(|e| e.to_string())?;
 
-    // Get project path and skill details
+    // Get project path
     let project_path: String = db_guard
         .conn()
         .query_row(
@@ -514,14 +552,22 @@ pub fn remove_skill_from_project(
         )
         .map_err(|e| e.to_string())?;
 
-    // Delete the skill file from project config
-    skill_writer::delete_project_skill(Path::new(&project_path), &skill)
-        .map_err(|e| e.to_string())?;
+    // Delete the skill file from all enabled editors
+    let enabled_editors = get_enabled_editors_from_db(&db_guard);
+    for editor in &enabled_editors {
+        match editor.as_str() {
+            "claude_code" => skill_writer::delete_project_skill(Path::new(&project_path), &skill)
+                .map_err(|e| e.to_string())?,
+            "opencode" => skill_writer::delete_project_skill_opencode(Path::new(&project_path), &skill)
+                .map_err(|e| e.to_string())?,
+            _ => {}
+        }
+    }
 
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub fn toggle_project_skill(
     db: State<'_, Arc<Mutex<Database>>>,
     assignment_id: i64,
@@ -539,7 +585,7 @@ pub fn toggle_project_skill(
 
     // Get project path and skill details
     let query = format!(
-        "SELECT p.path, s.id, s.name, s.description, s.content, s.allowed_tools, s.model, s.disable_model_invocation, s.tags, s.source, s.created_at, s.updated_at
+        "SELECT p.path, s.id, s.name, s.description, s.content, s.allowed_tools, s.model, s.disable_model_invocation, s.tags, s.source, s.source_path, s.is_favorite, s.created_at, s.updated_at
          FROM project_skills ps
          JOIN projects p ON ps.project_id = p.id
          JOIN skills s ON ps.skill_id = s.id
@@ -553,19 +599,32 @@ pub fn toggle_project_skill(
         })
         .map_err(|e| e.to_string())?;
 
-    // Write or delete the file based on enabled state
-    if enabled {
-        skill_writer::write_project_skill(Path::new(&project_path), &skill)
-            .map_err(|e| e.to_string())?;
-    } else {
-        skill_writer::delete_project_skill(Path::new(&project_path), &skill)
-            .map_err(|e| e.to_string())?;
+    // Write or delete the file for all enabled editors
+    let enabled_editors = get_enabled_editors_from_db(&db_guard);
+    for editor in &enabled_editors {
+        if enabled {
+            match editor.as_str() {
+                "claude_code" => skill_writer::write_project_skill(Path::new(&project_path), &skill)
+                    .map_err(|e| e.to_string())?,
+                "opencode" => skill_writer::write_project_skill_opencode(Path::new(&project_path), &skill)
+                    .map_err(|e| e.to_string())?,
+                _ => {}
+            }
+        } else {
+            match editor.as_str() {
+                "claude_code" => skill_writer::delete_project_skill(Path::new(&project_path), &skill)
+                    .map_err(|e| e.to_string())?,
+                "opencode" => skill_writer::delete_project_skill_opencode(Path::new(&project_path), &skill)
+                    .map_err(|e| e.to_string())?,
+                _ => {}
+            }
+        }
     }
 
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub fn get_project_skills(
     db: State<'_, Arc<Mutex<Database>>>,
     project_id: i64,
@@ -573,7 +632,7 @@ pub fn get_project_skills(
     let db = db.lock().map_err(|e| e.to_string())?;
     let query = format!(
         "SELECT ps.id, ps.skill_id, ps.is_enabled,
-                s.id, s.name, s.description, s.content, s.allowed_tools, s.model, s.disable_model_invocation, s.tags, s.source, s.created_at, s.updated_at
+                s.id, s.name, s.description, s.content, s.allowed_tools, s.model, s.disable_model_invocation, s.tags, s.source, s.source_path, s.is_favorite, s.created_at, s.updated_at
          FROM project_skills ps
          JOIN skills s ON ps.skill_id = s.id
          WHERE ps.project_id = ?
@@ -863,6 +922,22 @@ pub fn get_skill_files_from_db(db: &Database, skill_id: i64) -> Result<Vec<Skill
 pub fn delete_skill_file_from_db(db: &Database, id: i64) -> Result<(), String> {
     db.conn()
         .execute("DELETE FROM skill_files WHERE id = ?", [id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn toggle_skill_favorite(
+    db: State<'_, Arc<Mutex<Database>>>,
+    id: i64,
+    favorite: bool,
+) -> Result<(), String> {
+    let db = db.lock().map_err(|e| e.to_string())?;
+    db.conn()
+        .execute(
+            "UPDATE skills SET is_favorite = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            params![favorite as i32, id],
+        )
         .map_err(|e| e.to_string())?;
     Ok(())
 }

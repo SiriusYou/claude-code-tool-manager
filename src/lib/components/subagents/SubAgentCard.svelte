@@ -1,19 +1,21 @@
 <script lang="ts">
 	import type { SubAgent } from '$lib/types';
-	import { Bot, MoreVertical, Edit, Trash2 } from 'lucide-svelte';
+	import { Bot, MoreVertical, Edit, Trash2, Heart } from 'lucide-svelte';
 
 	type Props = {
 		subagent: SubAgent;
 		showActions?: boolean;
 		onEdit?: (subagent: SubAgent) => void;
 		onDelete?: (subagent: SubAgent) => void;
+		onFavoriteToggle?: (subagent: SubAgent, favorite: boolean) => void;
 	};
 
 	let {
 		subagent,
 		showActions = true,
 		onEdit,
-		onDelete
+		onDelete,
+		onFavoriteToggle
 	}: Props = $props();
 
 	let showMenu = $state(false);
@@ -50,7 +52,10 @@
 					{subagent.name}
 				</h3>
 				{#if subagent.source === 'auto-detected'}
-					<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+					<span
+						class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300 cursor-help"
+						title={subagent.sourcePath ? `Source: ${subagent.sourcePath}` : 'Auto-detected from filesystem'}
+					>
 						Auto
 					</span>
 				{/if}
@@ -89,47 +94,63 @@
 		</div>
 
 		{#if showActions}
-			<div class="relative">
-				<button
-					bind:this={menuButton}
-					onclick={toggleMenu}
-					class="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-				>
-					<MoreVertical class="w-4 h-4" />
-				</button>
-
-				{#if showMenu}
-					<div
-						class="absolute right-0 w-40 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-10
-							{menuAbove ? 'bottom-full mb-1' : 'top-full mt-1'}"
-						onclick={(e) => e.stopPropagation()}
+			<div class="flex items-center gap-1">
+				{#if onFavoriteToggle}
+					<button
+						onclick={(e) => {
+							e.stopPropagation();
+							onFavoriteToggle(subagent, !subagent.isFavorite);
+						}}
+						class="p-1.5 rounded-lg transition-colors {subagent.isFavorite
+							? 'text-rose-500 hover:text-rose-600'
+							: 'text-gray-300 hover:text-rose-400 dark:text-gray-600 dark:hover:text-rose-400'}"
+						title={subagent.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
 					>
-						{#if onEdit}
-							<button
-								onclick={() => {
-									onEdit(subagent);
-									closeMenu();
-								}}
-								class="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-							>
-								<Edit class="w-4 h-4" />
-								Edit
-							</button>
-						{/if}
-						{#if onDelete}
-							<button
-								onclick={() => {
-									onDelete(subagent);
-									closeMenu();
-								}}
-								class="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
-							>
-								<Trash2 class="w-4 h-4" />
-								Delete
-							</button>
-						{/if}
-					</div>
+						<Heart class="w-4 h-4" fill={subagent.isFavorite ? 'currentColor' : 'none'} />
+					</button>
 				{/if}
+				<div class="relative">
+					<button
+						bind:this={menuButton}
+						onclick={toggleMenu}
+						class="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+					>
+						<MoreVertical class="w-4 h-4" />
+					</button>
+
+					{#if showMenu}
+						<div
+							class="absolute right-0 w-40 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-10
+								{menuAbove ? 'bottom-full mb-1' : 'top-full mt-1'}"
+							onclick={(e) => e.stopPropagation()}
+						>
+							{#if onEdit}
+								<button
+									onclick={() => {
+										onEdit(subagent);
+										closeMenu();
+									}}
+									class="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+								>
+									<Edit class="w-4 h-4" />
+									Edit
+								</button>
+							{/if}
+							{#if onDelete}
+								<button
+									onclick={() => {
+										onDelete(subagent);
+										closeMenu();
+									}}
+									class="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+								>
+									<Trash2 class="w-4 h-4" />
+									Delete
+								</button>
+							{/if}
+						</div>
+					{/if}
+				</div>
 			</div>
 		{/if}
 	</div>

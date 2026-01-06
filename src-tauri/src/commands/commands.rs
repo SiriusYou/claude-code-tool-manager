@@ -1,7 +1,10 @@
 use crate::db::models::{Command, CreateCommandRequest, GlobalCommand, ProjectCommand};
 use crate::db::schema::Database;
+use crate::services::command_writer;
+use crate::commands::settings::get_enabled_editors_from_db;
 use regex::Regex;
 use rusqlite::params;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tauri::State;
 
@@ -154,7 +157,7 @@ pub fn validate_command_request(request: &CreateCommandRequest) -> Result<Option
 // ============================================================================
 
 const COMMAND_SELECT_FIELDS: &str =
-    "id, name, description, content, allowed_tools, argument_hint, model, tags, source, created_at, updated_at";
+    "id, name, description, content, allowed_tools, argument_hint, model, tags, source, source_path, is_favorite, created_at, updated_at";
 
 fn parse_json_array(json: Option<String>) -> Option<Vec<String>> {
     json.and_then(|s| serde_json::from_str(&s).ok())
@@ -171,8 +174,10 @@ fn row_to_command(row: &rusqlite::Row) -> Result<Command, rusqlite::Error> {
         model: row.get(6)?,
         tags: parse_json_array(row.get(7)?),
         source: row.get(8)?,
-        created_at: row.get(9)?,
-        updated_at: row.get(10)?,
+        source_path: row.get(9)?,
+        is_favorite: row.get::<_, i32>(10)? != 0,
+        created_at: row.get(11)?,
+        updated_at: row.get(12)?,
     })
 }
 
@@ -190,8 +195,10 @@ fn row_to_command_with_offset(
         model: row.get(offset + 6)?,
         tags: parse_json_array(row.get(offset + 7)?),
         source: row.get(offset + 8)?,
-        created_at: row.get(offset + 9)?,
-        updated_at: row.get(offset + 10)?,
+        source_path: row.get(offset + 9)?,
+        is_favorite: row.get::<_, i32>(offset + 10)? != 0,
+        created_at: row.get(offset + 11)?,
+        updated_at: row.get(offset + 12)?,
     })
 }
 
@@ -323,7 +330,7 @@ pub fn get_global_commands(
     let db = db.lock().map_err(|e| e.to_string())?;
     let query = format!(
         "SELECT gc.id, gc.command_id, gc.is_enabled,
-                c.id, c.name, c.description, c.content, c.allowed_tools, c.argument_hint, c.model, c.tags, c.source, c.created_at, c.updated_at
+                c.id, c.name, c.description, c.content, c.allowed_tools, c.argument_hint, c.model, c.tags, c.source, c.source_path, c.is_favorite, c.created_at, c.updated_at
          FROM global_commands gc
          JOIN commands c ON gc.command_id = c.id
          ORDER BY c.name"
@@ -372,8 +379,15 @@ pub fn add_global_command(
         )
         .map_err(|e| e.to_string())?;
 
-    // Write the command file to global config
-    crate::services::command_writer::write_global_command(&command).map_err(|e| e.to_string())?;
+    // Write the command file to all enabled editors
+    let enabled_editors = get_enabled_editors_from_db(&db_guard);
+    for editor in &enabled_editors {
+        match editor.as_str() {
+            "claude_code" => command_writer::write_global_command(&command).map_err(|e| e.to_string())?,
+            "opencode" => command_writer::write_global_command_opencode(&command).map_err(|e| e.to_string())?,
+            _ => {}
+        }
+    }
 
     Ok(())
 }
@@ -404,8 +418,15 @@ pub fn remove_global_command(
         )
         .map_err(|e| e.to_string())?;
 
-    // Delete the command file from global config
-    crate::services::command_writer::delete_global_command(&command).map_err(|e| e.to_string())?;
+    // Delete the command file from all enabled editors
+    let enabled_editors = get_enabled_editors_from_db(&db_guard);
+    for editor in &enabled_editors {
+        match editor.as_str() {
+            "claude_code" => command_writer::delete_global_command(&command).map_err(|e| e.to_string())?,
+            "opencode" => command_writer::delete_global_command_opencode(&command).map_err(|e| e.to_string())?,
+            _ => {}
+        }
+    }
 
     Ok(())
 }
@@ -439,13 +460,22 @@ pub fn toggle_global_command(
         .query_row([id], row_to_command)
         .map_err(|e| e.to_string())?;
 
-    // Write or delete the file based on enabled state
-    if enabled {
-        crate::services::command_writer::write_global_command(&command)
-            .map_err(|e| e.to_string())?;
-    } else {
-        crate::services::command_writer::delete_global_command(&command)
-            .map_err(|e| e.to_string())?;
+    // Write or delete the file for all enabled editors
+    let enabled_editors = get_enabled_editors_from_db(&db_guard);
+    for editor in &enabled_editors {
+        if enabled {
+            match editor.as_str() {
+                "claude_code" => command_writer::write_global_command(&command).map_err(|e| e.to_string())?,
+                "opencode" => command_writer::write_global_command_opencode(&command).map_err(|e| e.to_string())?,
+                _ => {}
+            }
+        } else {
+            match editor.as_str() {
+                "claude_code" => command_writer::delete_global_command(&command).map_err(|e| e.to_string())?,
+                "opencode" => command_writer::delete_global_command_opencode(&command).map_err(|e| e.to_string())?,
+                _ => {}
+            }
+        }
     }
 
     Ok(())
@@ -455,7 +485,7 @@ pub fn toggle_global_command(
 // Project Commands
 // ============================================================================
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub fn assign_command_to_project(
     db: State<'_, Arc<Mutex<Database>>>,
     project_id: i64,
@@ -463,7 +493,7 @@ pub fn assign_command_to_project(
 ) -> Result<(), String> {
     let db_guard = db.lock().map_err(|e| e.to_string())?;
 
-    // Get project path and command details
+    // Get project path
     let project_path: String = db_guard
         .conn()
         .query_row(
@@ -491,17 +521,22 @@ pub fn assign_command_to_project(
         )
         .map_err(|e| e.to_string())?;
 
-    // Write the command file to project config
-    crate::services::command_writer::write_project_command(
-        std::path::Path::new(&project_path),
-        &command,
-    )
-    .map_err(|e| e.to_string())?;
+    // Write the command file to all enabled editors
+    let enabled_editors = get_enabled_editors_from_db(&db_guard);
+    for editor in &enabled_editors {
+        match editor.as_str() {
+            "claude_code" => command_writer::write_project_command(Path::new(&project_path), &command)
+                .map_err(|e| e.to_string())?,
+            "opencode" => command_writer::write_project_command_opencode(Path::new(&project_path), &command)
+                .map_err(|e| e.to_string())?,
+            _ => {}
+        }
+    }
 
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub fn remove_command_from_project(
     db: State<'_, Arc<Mutex<Database>>>,
     project_id: i64,
@@ -509,7 +544,7 @@ pub fn remove_command_from_project(
 ) -> Result<(), String> {
     let db_guard = db.lock().map_err(|e| e.to_string())?;
 
-    // Get project path and command details
+    // Get project path
     let project_path: String = db_guard
         .conn()
         .query_row(
@@ -537,20 +572,25 @@ pub fn remove_command_from_project(
         )
         .map_err(|e| e.to_string())?;
 
-    // Delete the command file from project config
-    crate::services::command_writer::delete_project_command(
-        std::path::Path::new(&project_path),
-        &command,
-    )
-    .map_err(|e| e.to_string())?;
+    // Delete the command file from all enabled editors
+    let enabled_editors = get_enabled_editors_from_db(&db_guard);
+    for editor in &enabled_editors {
+        match editor.as_str() {
+            "claude_code" => command_writer::delete_project_command(Path::new(&project_path), &command)
+                .map_err(|e| e.to_string())?,
+            "opencode" => command_writer::delete_project_command_opencode(Path::new(&project_path), &command)
+                .map_err(|e| e.to_string())?,
+            _ => {}
+        }
+    }
 
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub fn toggle_project_command(
     db: State<'_, Arc<Mutex<Database>>>,
-    id: i64,
+    assignment_id: i64,
     enabled: bool,
 ) -> Result<(), String> {
     let db_guard = db.lock().map_err(|e| e.to_string())?;
@@ -559,13 +599,13 @@ pub fn toggle_project_command(
         .conn()
         .execute(
             "UPDATE project_commands SET is_enabled = ? WHERE id = ?",
-            params![enabled as i32, id],
+            params![enabled as i32, assignment_id],
         )
         .map_err(|e| e.to_string())?;
 
-    // Get the command and project details
+    // Get the command and project path
     let query = format!(
-        "SELECT c.id, c.name, c.description, c.content, c.allowed_tools, c.argument_hint, c.model, c.tags, c.source, c.created_at, c.updated_at, p.path
+        "SELECT c.id, c.name, c.description, c.content, c.allowed_tools, c.argument_hint, c.model, c.tags, c.source, c.source_path, c.is_favorite, c.created_at, c.updated_at, p.path
          FROM project_commands pc
          JOIN commands c ON pc.command_id = c.id
          JOIN projects p ON pc.project_id = p.id
@@ -574,28 +614,35 @@ pub fn toggle_project_command(
     let mut stmt = db_guard.conn().prepare(&query).map_err(|e| e.to_string())?;
 
     let (command, project_path): (Command, String) = stmt
-        .query_row([id], |row| Ok((row_to_command(row)?, row.get(11)?)))
+        .query_row([assignment_id], |row| Ok((row_to_command(row)?, row.get(13)?)))
         .map_err(|e| e.to_string())?;
 
-    // Write or delete the file based on enabled state
-    if enabled {
-        crate::services::command_writer::write_project_command(
-            std::path::Path::new(&project_path),
-            &command,
-        )
-        .map_err(|e| e.to_string())?;
-    } else {
-        crate::services::command_writer::delete_project_command(
-            std::path::Path::new(&project_path),
-            &command,
-        )
-        .map_err(|e| e.to_string())?;
+    // Write or delete the file for all enabled editors
+    let enabled_editors = get_enabled_editors_from_db(&db_guard);
+    for editor in &enabled_editors {
+        if enabled {
+            match editor.as_str() {
+                "claude_code" => command_writer::write_project_command(Path::new(&project_path), &command)
+                    .map_err(|e| e.to_string())?,
+                "opencode" => command_writer::write_project_command_opencode(Path::new(&project_path), &command)
+                    .map_err(|e| e.to_string())?,
+                _ => {}
+            }
+        } else {
+            match editor.as_str() {
+                "claude_code" => command_writer::delete_project_command(Path::new(&project_path), &command)
+                    .map_err(|e| e.to_string())?,
+                "opencode" => command_writer::delete_project_command_opencode(Path::new(&project_path), &command)
+                    .map_err(|e| e.to_string())?,
+                _ => {}
+            }
+        }
     }
 
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub fn get_project_commands(
     db: State<'_, Arc<Mutex<Database>>>,
     project_id: i64,
@@ -603,7 +650,7 @@ pub fn get_project_commands(
     let db = db.lock().map_err(|e| e.to_string())?;
     let query = format!(
         "SELECT pc.id, pc.command_id, pc.is_enabled,
-                c.id, c.name, c.description, c.content, c.allowed_tools, c.argument_hint, c.model, c.tags, c.source, c.created_at, c.updated_at
+                c.id, c.name, c.description, c.content, c.allowed_tools, c.argument_hint, c.model, c.tags, c.source, c.source_path, c.is_favorite, c.created_at, c.updated_at
          FROM project_commands pc
          JOIN commands c ON pc.command_id = c.id
          WHERE pc.project_id = ?
@@ -625,6 +672,26 @@ pub fn get_project_commands(
         .collect();
 
     Ok(commands)
+}
+
+// ============================================================================
+// Favorites
+// ============================================================================
+
+#[tauri::command]
+pub fn toggle_command_favorite(
+    db: State<'_, Arc<Mutex<Database>>>,
+    id: i64,
+    favorite: bool,
+) -> Result<(), String> {
+    let db = db.lock().map_err(|e| e.to_string())?;
+    db.conn()
+        .execute(
+            "UPDATE commands SET is_favorite = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            params![favorite as i32, id],
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 // ============================================================================

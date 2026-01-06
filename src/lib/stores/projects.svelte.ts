@@ -100,8 +100,25 @@ class ProjectsState {
 		console.log('[projectsStore] Synced global config');
 	}
 
+	async toggleFavorite(id: number, favorite: boolean): Promise<void> {
+		console.log(`[projectsStore] Toggling favorite for project id=${id} favorite=${favorite}`);
+		await invoke('toggle_project_favorite', { id, favorite });
+		// Update local state
+		this.projects = this.projects.map((p) => (p.id === id ? { ...p, isFavorite: favorite } : p));
+	}
+
 	getProjectById(id: number): Project | undefined {
 		return this.projects.find((p) => p.id === id);
+	}
+
+	// Get projects sorted by favorites first, then by name
+	get sortedProjects(): Project[] {
+		return [...this.projects].sort((a, b) => {
+			if (a.isFavorite !== b.isFavorite) {
+				return a.isFavorite ? -1 : 1;
+			}
+			return a.name.localeCompare(b.name);
+		});
 	}
 }
 

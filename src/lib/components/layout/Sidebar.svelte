@@ -16,13 +16,13 @@
 
 	const navItems = [
 		{ href: '/', label: 'Dashboard', icon: Plug },
-		{ href: '/library', label: 'MCP Library', icon: Library },
-		{ href: '/commands', label: 'Commands', icon: Terminal },
+		{ href: '/projects', label: 'Projects', icon: FolderOpen },
+		{ href: '/library', label: 'MCPs', icon: Library },
+		{ href: '/subagents', label: 'Agents', icon: Bot },
 		{ href: '/skills', label: 'Skills', icon: Sparkles },
-		{ href: '/subagents', label: 'Sub-Agents', icon: Bot },
+		{ href: '/commands', label: 'Commands', icon: Terminal },
 		{ href: '/hooks', label: 'Hooks', icon: Zap },
 		{ href: '/marketplace', label: 'Marketplace', icon: Store },
-		{ href: '/projects', label: 'Projects', icon: FolderOpen },
 		{ href: '/settings', label: 'Global Settings', icon: Settings }
 	];
 </script>

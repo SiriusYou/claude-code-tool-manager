@@ -1,6 +1,7 @@
 use crate::db::models::{CreateSubAgentRequest, GlobalSubAgent, ProjectSubAgent, SubAgent};
 use crate::db::schema::Database;
 use crate::services::subagent_writer;
+use crate::commands::settings::get_enabled_editors_from_db;
 use rusqlite::params;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -22,8 +23,10 @@ fn row_to_subagent(row: &rusqlite::Row) -> rusqlite::Result<SubAgent> {
         skills: parse_json_array(row.get(7)?),
         tags: parse_json_array(row.get(8)?),
         source: row.get(9)?,
-        created_at: row.get(10)?,
-        updated_at: row.get(11)?,
+        source_path: row.get(10)?,
+        is_favorite: row.get::<_, i32>(11).unwrap_or(0) != 0,
+        created_at: row.get(12)?,
+        updated_at: row.get(13)?,
     })
 }
 
@@ -39,8 +42,10 @@ fn row_to_subagent_with_offset(row: &rusqlite::Row, offset: usize) -> rusqlite::
         skills: parse_json_array(row.get(offset + 7)?),
         tags: parse_json_array(row.get(offset + 8)?),
         source: row.get(offset + 9)?,
-        created_at: row.get(offset + 10)?,
-        updated_at: row.get(offset + 11)?,
+        source_path: row.get(offset + 10)?,
+        is_favorite: row.get::<_, i32>(offset + 11).unwrap_or(0) != 0,
+        created_at: row.get(offset + 12)?,
+        updated_at: row.get(offset + 13)?,
     })
 }
 
@@ -50,7 +55,7 @@ pub fn get_all_subagents(db: State<'_, Arc<Mutex<Database>>>) -> Result<Vec<SubA
     let mut stmt = db
         .conn()
         .prepare(
-            "SELECT id, name, description, content, tools, model, permission_mode, skills, tags, source, created_at, updated_at
+            "SELECT id, name, description, content, tools, model, permission_mode, skills, tags, source, source_path, is_favorite, created_at, updated_at
              FROM subagents ORDER BY name",
         )
         .map_err(|e| e.to_string())?;
@@ -97,7 +102,7 @@ pub fn create_subagent(
     let mut stmt = db_guard
         .conn()
         .prepare(
-            "SELECT id, name, description, content, tools, model, permission_mode, skills, tags, source, created_at, updated_at
+            "SELECT id, name, description, content, tools, model, permission_mode, skills, tags, source, source_path, is_favorite, created_at, updated_at
              FROM subagents WHERE id = ?",
         )
         .map_err(|e| e.to_string())?;
@@ -138,7 +143,7 @@ pub fn update_subagent(
     let mut stmt = db
         .conn()
         .prepare(
-            "SELECT id, name, description, content, tools, model, permission_mode, skills, tags, source, created_at, updated_at
+            "SELECT id, name, description, content, tools, model, permission_mode, skills, tags, source, source_path, is_favorite, created_at, updated_at
              FROM subagents WHERE id = ?",
         )
         .map_err(|e| e.to_string())?;
@@ -175,7 +180,7 @@ pub fn get_global_subagents(
         .conn()
         .prepare(
             "SELECT gs.id, gs.subagent_id, gs.is_enabled,
-                    s.id, s.name, s.description, s.content, s.tools, s.model, s.permission_mode, s.skills, s.tags, s.source, s.created_at, s.updated_at
+                    s.id, s.name, s.description, s.content, s.tools, s.model, s.permission_mode, s.skills, s.tags, s.source, s.source_path, s.is_favorite, s.created_at, s.updated_at
              FROM global_subagents gs
              JOIN subagents s ON gs.subagent_id = s.id
              ORDER BY s.name",
@@ -207,7 +212,7 @@ pub fn add_global_subagent(
 
     // Get the subagent details for file writing
     let mut stmt = db_guard.conn()
-        .prepare("SELECT id, name, description, content, tools, model, permission_mode, skills, tags, source, created_at, updated_at FROM subagents WHERE id = ?")
+        .prepare("SELECT id, name, description, content, tools, model, permission_mode, skills, tags, source, source_path, is_favorite, created_at, updated_at FROM subagents WHERE id = ?")
         .map_err(|e| e.to_string())?;
 
     let subagent: SubAgent = stmt
@@ -222,8 +227,15 @@ pub fn add_global_subagent(
         )
         .map_err(|e| e.to_string())?;
 
-    // Write the subagent file to global config
-    subagent_writer::write_global_subagent(&subagent).map_err(|e| e.to_string())?;
+    // Write the subagent file to all enabled editors
+    let enabled_editors = get_enabled_editors_from_db(&db_guard);
+    for editor in &enabled_editors {
+        match editor.as_str() {
+            "claude_code" => subagent_writer::write_global_subagent(&subagent).map_err(|e| e.to_string())?,
+            "opencode" => subagent_writer::write_global_subagent_opencode(&subagent).map_err(|e| e.to_string())?,
+            _ => {}
+        }
+    }
 
     Ok(())
 }
@@ -253,8 +265,15 @@ pub fn remove_global_subagent(
         )
         .map_err(|e| e.to_string())?;
 
-    // Delete the subagent file from global config
-    subagent_writer::delete_global_subagent(&name).map_err(|e| e.to_string())?;
+    // Delete the subagent file from all enabled editors
+    let enabled_editors = get_enabled_editors_from_db(&db_guard);
+    for editor in &enabled_editors {
+        match editor.as_str() {
+            "claude_code" => subagent_writer::delete_global_subagent(&name).map_err(|e| e.to_string())?,
+            "opencode" => subagent_writer::delete_global_subagent_opencode(&name).map_err(|e| e.to_string())?,
+            _ => {}
+        }
+    }
 
     Ok(())
 }
@@ -278,7 +297,7 @@ pub fn toggle_global_subagent(
     // Get the subagent details
     let mut stmt = db_guard.conn()
         .prepare(
-            "SELECT s.id, s.name, s.description, s.content, s.tools, s.model, s.permission_mode, s.skills, s.tags, s.source, s.created_at, s.updated_at
+            "SELECT s.id, s.name, s.description, s.content, s.tools, s.model, s.permission_mode, s.skills, s.tags, s.source, s.source_path, s.is_favorite, s.created_at, s.updated_at
              FROM global_subagents gs
              JOIN subagents s ON gs.subagent_id = s.id
              WHERE gs.id = ?"
@@ -289,18 +308,29 @@ pub fn toggle_global_subagent(
         .query_row([id], row_to_subagent)
         .map_err(|e| e.to_string())?;
 
-    // Write or delete the file based on enabled state
-    if enabled {
-        subagent_writer::write_global_subagent(&subagent).map_err(|e| e.to_string())?;
-    } else {
-        subagent_writer::delete_global_subagent(&subagent.name).map_err(|e| e.to_string())?;
+    // Write or delete the file for all enabled editors
+    let enabled_editors = get_enabled_editors_from_db(&db_guard);
+    for editor in &enabled_editors {
+        if enabled {
+            match editor.as_str() {
+                "claude_code" => subagent_writer::write_global_subagent(&subagent).map_err(|e| e.to_string())?,
+                "opencode" => subagent_writer::write_global_subagent_opencode(&subagent).map_err(|e| e.to_string())?,
+                _ => {}
+            }
+        } else {
+            match editor.as_str() {
+                "claude_code" => subagent_writer::delete_global_subagent(&subagent.name).map_err(|e| e.to_string())?,
+                "opencode" => subagent_writer::delete_global_subagent_opencode(&subagent.name).map_err(|e| e.to_string())?,
+                _ => {}
+            }
+        }
     }
 
     Ok(())
 }
 
 // Project Sub-Agents
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub fn assign_subagent_to_project(
     db: State<'_, Arc<Mutex<Database>>>,
     project_id: i64,
@@ -308,7 +338,7 @@ pub fn assign_subagent_to_project(
 ) -> Result<(), String> {
     let db_guard = db.lock().map_err(|e| e.to_string())?;
 
-    // Get project path and subagent details
+    // Get project path
     let project_path: String = db_guard
         .conn()
         .query_row(
@@ -319,7 +349,7 @@ pub fn assign_subagent_to_project(
         .map_err(|e| e.to_string())?;
 
     let mut stmt = db_guard.conn()
-        .prepare("SELECT id, name, description, content, tools, model, permission_mode, skills, tags, source, created_at, updated_at FROM subagents WHERE id = ?")
+        .prepare("SELECT id, name, description, content, tools, model, permission_mode, skills, tags, source, source_path, is_favorite, created_at, updated_at FROM subagents WHERE id = ?")
         .map_err(|e| e.to_string())?;
 
     let subagent: SubAgent = stmt
@@ -334,14 +364,22 @@ pub fn assign_subagent_to_project(
         )
         .map_err(|e| e.to_string())?;
 
-    // Write the subagent file to project config
-    subagent_writer::write_project_subagent(Path::new(&project_path), &subagent)
-        .map_err(|e| e.to_string())?;
+    // Write the subagent file to all enabled editors
+    let enabled_editors = get_enabled_editors_from_db(&db_guard);
+    for editor in &enabled_editors {
+        match editor.as_str() {
+            "claude_code" => subagent_writer::write_project_subagent(Path::new(&project_path), &subagent)
+                .map_err(|e| e.to_string())?,
+            "opencode" => subagent_writer::write_project_subagent_opencode(Path::new(&project_path), &subagent)
+                .map_err(|e| e.to_string())?,
+            _ => {}
+        }
+    }
 
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub fn remove_subagent_from_project(
     db: State<'_, Arc<Mutex<Database>>>,
     project_id: i64,
@@ -349,7 +387,7 @@ pub fn remove_subagent_from_project(
 ) -> Result<(), String> {
     let db_guard = db.lock().map_err(|e| e.to_string())?;
 
-    // Get project path and subagent name
+    // Get project path
     let project_path: String = db_guard
         .conn()
         .query_row(
@@ -376,14 +414,22 @@ pub fn remove_subagent_from_project(
         )
         .map_err(|e| e.to_string())?;
 
-    // Delete the subagent file from project config
-    subagent_writer::delete_project_subagent(Path::new(&project_path), &name)
-        .map_err(|e| e.to_string())?;
+    // Delete the subagent file from all enabled editors
+    let enabled_editors = get_enabled_editors_from_db(&db_guard);
+    for editor in &enabled_editors {
+        match editor.as_str() {
+            "claude_code" => subagent_writer::delete_project_subagent(Path::new(&project_path), &name)
+                .map_err(|e| e.to_string())?,
+            "opencode" => subagent_writer::delete_project_subagent_opencode(Path::new(&project_path), &name)
+                .map_err(|e| e.to_string())?,
+            _ => {}
+        }
+    }
 
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub fn toggle_project_subagent(
     db: State<'_, Arc<Mutex<Database>>>,
     assignment_id: i64,
@@ -402,7 +448,7 @@ pub fn toggle_project_subagent(
     // Get project path and subagent details
     let mut stmt = db_guard.conn()
         .prepare(
-            "SELECT p.path, s.id, s.name, s.description, s.content, s.tools, s.model, s.permission_mode, s.skills, s.tags, s.source, s.created_at, s.updated_at
+            "SELECT p.path, s.id, s.name, s.description, s.content, s.tools, s.model, s.permission_mode, s.skills, s.tags, s.source, s.source_path, s.is_favorite, s.created_at, s.updated_at
              FROM project_subagents ps
              JOIN projects p ON ps.project_id = p.id
              JOIN subagents s ON ps.subagent_id = s.id
@@ -416,19 +462,32 @@ pub fn toggle_project_subagent(
         })
         .map_err(|e: rusqlite::Error| e.to_string())?;
 
-    // Write or delete the file based on enabled state
-    if enabled {
-        subagent_writer::write_project_subagent(Path::new(&project_path), &subagent)
-            .map_err(|e| e.to_string())?;
-    } else {
-        subagent_writer::delete_project_subagent(Path::new(&project_path), &subagent.name)
-            .map_err(|e| e.to_string())?;
+    // Write or delete the file for all enabled editors
+    let enabled_editors = get_enabled_editors_from_db(&db_guard);
+    for editor in &enabled_editors {
+        if enabled {
+            match editor.as_str() {
+                "claude_code" => subagent_writer::write_project_subagent(Path::new(&project_path), &subagent)
+                    .map_err(|e| e.to_string())?,
+                "opencode" => subagent_writer::write_project_subagent_opencode(Path::new(&project_path), &subagent)
+                    .map_err(|e| e.to_string())?,
+                _ => {}
+            }
+        } else {
+            match editor.as_str() {
+                "claude_code" => subagent_writer::delete_project_subagent(Path::new(&project_path), &subagent.name)
+                    .map_err(|e| e.to_string())?,
+                "opencode" => subagent_writer::delete_project_subagent_opencode(Path::new(&project_path), &subagent.name)
+                    .map_err(|e| e.to_string())?,
+                _ => {}
+            }
+        }
     }
 
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub fn get_project_subagents(
     db: State<'_, Arc<Mutex<Database>>>,
     project_id: i64,
@@ -440,7 +499,7 @@ pub fn get_project_subagents(
         .conn()
         .prepare(
             "SELECT ps.id, ps.subagent_id, ps.is_enabled,
-                    s.id, s.name, s.description, s.content, s.tools, s.model, s.permission_mode, s.skills, s.tags, s.source, s.created_at, s.updated_at
+                    s.id, s.name, s.description, s.content, s.tools, s.model, s.permission_mode, s.skills, s.tags, s.source, s.source_path, s.is_favorite, s.created_at, s.updated_at
              FROM project_subagents ps
              JOIN subagents s ON ps.subagent_id = s.id
              WHERE ps.project_id = ?
@@ -503,7 +562,7 @@ pub fn get_subagent_by_id(db: &Database, id: i64) -> Result<SubAgent, String> {
     let mut stmt = db
         .conn()
         .prepare(
-            "SELECT id, name, description, content, tools, model, permission_mode, skills, tags, source, created_at, updated_at
+            "SELECT id, name, description, content, tools, model, permission_mode, skills, tags, source, source_path, is_favorite, created_at, updated_at
              FROM subagents WHERE id = ?",
         )
         .map_err(|e| e.to_string())?;
@@ -517,7 +576,7 @@ pub fn get_all_subagents_from_db(db: &Database) -> Result<Vec<SubAgent>, String>
     let mut stmt = db
         .conn()
         .prepare(
-            "SELECT id, name, description, content, tools, model, permission_mode, skills, tags, source, created_at, updated_at
+            "SELECT id, name, description, content, tools, model, permission_mode, skills, tags, source, source_path, is_favorite, created_at, updated_at
              FROM subagents ORDER BY name",
         )
         .map_err(|e| e.to_string())?;
@@ -565,6 +624,22 @@ pub fn update_subagent_in_db(
 pub fn delete_subagent_from_db(db: &Database, id: i64) -> Result<(), String> {
     db.conn()
         .execute("DELETE FROM subagents WHERE id = ?", [id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn toggle_subagent_favorite(
+    db: State<'_, Arc<Mutex<Database>>>,
+    id: i64,
+    favorite: bool,
+) -> Result<(), String> {
+    let db = db.lock().map_err(|e| e.to_string())?;
+    db.conn()
+        .execute(
+            "UPDATE subagents SET is_favorite = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            params![favorite as i32, id],
+        )
         .map_err(|e| e.to_string())?;
     Ok(())
 }

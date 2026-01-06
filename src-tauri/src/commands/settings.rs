@@ -2,7 +2,6 @@ use crate::db::{AppSettings, Database, EditorInfo, OpenCodePaths};
 use crate::utils::opencode_paths::{get_opencode_paths, is_opencode_installed};
 use crate::utils::paths::get_claude_paths;
 use log::info;
-use rusqlite::params;
 use std::sync::{Arc, Mutex};
 use tauri::State;
 
@@ -11,12 +10,7 @@ use tauri::State;
 pub fn get_app_settings(db: State<'_, Arc<Mutex<Database>>>) -> Result<AppSettings, String> {
     info!("[Settings] Getting app settings");
     let db = db.lock().map_err(|e| e.to_string())?;
-
-    let default_editor = db
-        .get_setting("default_editor")
-        .unwrap_or_else(|| "claude_code".to_string());
-
-    Ok(AppSettings { default_editor })
+    get_app_settings_from_db(&db)
 }
 
 /// Update application settings
@@ -26,22 +20,22 @@ pub fn update_app_settings(
     settings: AppSettings,
 ) -> Result<(), String> {
     info!(
-        "[Settings] Updating app settings: default_editor={}",
-        settings.default_editor
+        "[Settings] Updating app settings: enabled_editors={:?}",
+        settings.enabled_editors
     );
     let db = db.lock().map_err(|e| e.to_string())?;
-
-    db.set_setting("default_editor", &settings.default_editor)
-        .map_err(|e| e.to_string())?;
-
-    Ok(())
+    update_app_settings_in_db(&db, &settings)
 }
 
-/// Get info about available editors
+/// Get info about available editors with their enabled status
 #[tauri::command]
-pub fn get_available_editors() -> Result<Vec<EditorInfo>, String> {
+pub fn get_available_editors(
+    db: State<'_, Arc<Mutex<Database>>>,
+) -> Result<Vec<EditorInfo>, String> {
     info!("[Settings] Getting available editors");
+    let db = db.lock().map_err(|e| e.to_string())?;
 
+    let enabled = get_enabled_editors_from_db(&db);
     let mut editors = Vec::new();
 
     // Claude Code
@@ -50,6 +44,7 @@ pub fn get_available_editors() -> Result<Vec<EditorInfo>, String> {
             id: "claude_code".to_string(),
             name: "Claude Code".to_string(),
             is_installed: paths.claude_dir.exists(),
+            is_enabled: enabled.contains(&"claude_code".to_string()),
             config_path: paths.claude_json.to_string_lossy().to_string(),
         });
     }
@@ -60,11 +55,39 @@ pub fn get_available_editors() -> Result<Vec<EditorInfo>, String> {
             id: "opencode".to_string(),
             name: "OpenCode".to_string(),
             is_installed: is_opencode_installed(),
+            is_enabled: enabled.contains(&"opencode".to_string()),
             config_path: paths.config_file.to_string_lossy().to_string(),
         });
     }
 
     Ok(editors)
+}
+
+/// Toggle an editor's enabled status
+#[tauri::command]
+pub fn toggle_editor(
+    db: State<'_, Arc<Mutex<Database>>>,
+    editor_id: String,
+    enabled: bool,
+) -> Result<(), String> {
+    info!(
+        "[Settings] Toggling editor {} to {}",
+        editor_id, enabled
+    );
+    let db = db.lock().map_err(|e| e.to_string())?;
+
+    let mut editors = get_enabled_editors_from_db(&db);
+
+    if enabled {
+        if !editors.contains(&editor_id) {
+            editors.push(editor_id);
+        }
+    } else {
+        editors.retain(|e| e != &editor_id);
+    }
+
+    let settings = AppSettings { enabled_editors: editors };
+    update_app_settings_in_db(&db, &settings)
 }
 
 /// Get OpenCode paths
@@ -85,78 +108,39 @@ pub fn get_opencode_paths_cmd() -> Result<OpenCodePaths, String> {
     })
 }
 
-/// Update project editor type
-#[tauri::command]
-pub fn update_project_editor_type(
-    db: State<'_, Arc<Mutex<Database>>>,
-    project_id: i64,
-    editor_type: String,
-) -> Result<(), String> {
-    info!(
-        "[Settings] Updating project {} editor_type to {}",
-        project_id, editor_type
-    );
-
-    let db = db.lock().map_err(|e| e.to_string())?;
-    update_project_editor_type_in_db(&db, project_id, &editor_type)
-}
-
 // ============================================================================
 // Testable helper functions (no Tauri State dependency)
 // ============================================================================
 
-/// Get app settings directly from the database (for testing)
+/// Get app settings directly from the database
 pub fn get_app_settings_from_db(db: &Database) -> Result<AppSettings, String> {
-    let default_editor = db
-        .get_setting("default_editor")
-        .unwrap_or_else(|| "claude_code".to_string());
-
-    Ok(AppSettings { default_editor })
+    let enabled_editors = get_enabled_editors_from_db(db);
+    Ok(AppSettings { enabled_editors })
 }
 
-/// Update app settings directly in the database (for testing)
+/// Get list of enabled editors from the database
+pub fn get_enabled_editors_from_db(db: &Database) -> Vec<String> {
+    db.get_setting("enabled_editors")
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| vec!["claude_code".to_string()])
+}
+
+/// Update app settings directly in the database
 pub fn update_app_settings_in_db(db: &Database, settings: &AppSettings) -> Result<(), String> {
-    db.set_setting("default_editor", &settings.default_editor)
-        .map_err(|e| e.to_string())
-}
-
-/// Update project editor type directly in the database (for testing)
-pub fn update_project_editor_type_in_db(
-    db: &Database,
-    project_id: i64,
-    editor_type: &str,
-) -> Result<(), String> {
-    // Validate editor type
-    if editor_type != "claude_code" && editor_type != "opencode" {
-        return Err(format!("Invalid editor type: {}", editor_type));
-    }
-
-    db.conn()
-        .execute(
-            "UPDATE projects SET editor_type = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            params![editor_type, project_id],
-        )
+    let json = serde_json::to_string(&settings.enabled_editors)
         .map_err(|e| e.to_string())?;
-
-    Ok(())
+    db.set_setting("enabled_editors", &json)
+        .map_err(|e| e.to_string())
 }
 
-/// Get project editor type directly from the database (for testing)
-pub fn get_project_editor_type_from_db(db: &Database, project_id: i64) -> Result<String, String> {
-    db.conn()
-        .query_row(
-            "SELECT COALESCE(editor_type, 'claude_code') FROM projects WHERE id = ?",
-            [project_id],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())
+/// Check if a specific editor is enabled
+pub fn is_editor_enabled(db: &Database, editor_id: &str) -> bool {
+    get_enabled_editors_from_db(db).contains(&editor_id.to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commands::projects::create_project_in_db;
-    use crate::db::CreateProjectRequest;
 
     // =========================================================================
     // AppSettings tests
@@ -168,118 +152,69 @@ mod tests {
 
         let settings = get_app_settings_from_db(&db).unwrap();
 
-        // Default is claude_code
-        assert_eq!(settings.default_editor, "claude_code");
+        // Default is claude_code only
+        assert_eq!(settings.enabled_editors, vec!["claude_code".to_string()]);
     }
 
     #[test]
     fn test_update_and_get_app_settings() {
         let db = Database::in_memory().unwrap();
 
-        // Update to opencode
+        // Enable both editors
         let settings = AppSettings {
-            default_editor: "opencode".to_string(),
+            enabled_editors: vec!["claude_code".to_string(), "opencode".to_string()],
         };
         update_app_settings_in_db(&db, &settings).unwrap();
 
         let fetched = get_app_settings_from_db(&db).unwrap();
-        assert_eq!(fetched.default_editor, "opencode");
+        assert_eq!(fetched.enabled_editors.len(), 2);
+        assert!(fetched.enabled_editors.contains(&"claude_code".to_string()));
+        assert!(fetched.enabled_editors.contains(&"opencode".to_string()));
+    }
 
-        // Update back to claude_code
+    #[test]
+    fn test_disable_all_editors() {
+        let db = Database::in_memory().unwrap();
+
+        // Disable all editors
         let settings = AppSettings {
-            default_editor: "claude_code".to_string(),
+            enabled_editors: vec![],
         };
         update_app_settings_in_db(&db, &settings).unwrap();
 
         let fetched = get_app_settings_from_db(&db).unwrap();
-        assert_eq!(fetched.default_editor, "claude_code");
+        assert!(fetched.enabled_editors.is_empty());
+    }
+
+    #[test]
+    fn test_is_editor_enabled() {
+        let db = Database::in_memory().unwrap();
+
+        // Default: only claude_code is enabled
+        assert!(is_editor_enabled(&db, "claude_code"));
+        assert!(!is_editor_enabled(&db, "opencode"));
+
+        // Enable opencode
+        let settings = AppSettings {
+            enabled_editors: vec!["claude_code".to_string(), "opencode".to_string()],
+        };
+        update_app_settings_in_db(&db, &settings).unwrap();
+
+        assert!(is_editor_enabled(&db, "claude_code"));
+        assert!(is_editor_enabled(&db, "opencode"));
     }
 
     #[test]
     fn test_app_settings_serde() {
         let settings = AppSettings {
-            default_editor: "claude_code".to_string(),
+            enabled_editors: vec!["claude_code".to_string(), "opencode".to_string()],
         };
 
         let json = serde_json::to_string(&settings).unwrap();
-        assert!(json.contains("defaultEditor")); // camelCase
+        assert!(json.contains("enabledEditors")); // camelCase
 
         let deserialized: AppSettings = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.default_editor, "claude_code");
-    }
-
-    // =========================================================================
-    // Project editor type tests
-    // =========================================================================
-
-    fn create_test_project(db: &Database) -> i64 {
-        let project = CreateProjectRequest {
-            name: "Test Project".to_string(),
-            path: format!(
-                "/test/project/{}",
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos()
-            ),
-        };
-        create_project_in_db(db, &project).unwrap().id
-    }
-
-    #[test]
-    fn test_get_project_editor_type_default() {
-        let db = Database::in_memory().unwrap();
-        let project_id = create_test_project(&db);
-
-        let editor_type = get_project_editor_type_from_db(&db, project_id).unwrap();
-
-        assert_eq!(editor_type, "claude_code");
-    }
-
-    #[test]
-    fn test_update_project_editor_type_to_opencode() {
-        let db = Database::in_memory().unwrap();
-        let project_id = create_test_project(&db);
-
-        update_project_editor_type_in_db(&db, project_id, "opencode").unwrap();
-
-        let editor_type = get_project_editor_type_from_db(&db, project_id).unwrap();
-        assert_eq!(editor_type, "opencode");
-    }
-
-    #[test]
-    fn test_update_project_editor_type_to_claude_code() {
-        let db = Database::in_memory().unwrap();
-        let project_id = create_test_project(&db);
-
-        // First set to opencode
-        update_project_editor_type_in_db(&db, project_id, "opencode").unwrap();
-
-        // Then back to claude_code
-        update_project_editor_type_in_db(&db, project_id, "claude_code").unwrap();
-
-        let editor_type = get_project_editor_type_from_db(&db, project_id).unwrap();
-        assert_eq!(editor_type, "claude_code");
-    }
-
-    #[test]
-    fn test_update_project_editor_type_invalid() {
-        let db = Database::in_memory().unwrap();
-        let project_id = create_test_project(&db);
-
-        let result = update_project_editor_type_in_db(&db, project_id, "invalid_editor");
-
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Invalid editor type"));
-    }
-
-    #[test]
-    fn test_get_project_editor_type_not_found() {
-        let db = Database::in_memory().unwrap();
-
-        let result = get_project_editor_type_from_db(&db, 9999);
-
-        assert!(result.is_err());
+        assert_eq!(deserialized.enabled_editors.len(), 2);
     }
 
     // =========================================================================
@@ -292,32 +227,37 @@ mod tests {
             id: "claude_code".to_string(),
             name: "Claude Code".to_string(),
             is_installed: true,
+            is_enabled: true,
             config_path: "/home/user/.claude.json".to_string(),
         };
 
         let json = serde_json::to_string(&info).unwrap();
         // Should use camelCase
         assert!(json.contains("isInstalled"));
+        assert!(json.contains("isEnabled"));
         assert!(json.contains("configPath"));
 
         let deserialized: EditorInfo = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.id, "claude_code");
         assert!(deserialized.is_installed);
+        assert!(deserialized.is_enabled);
     }
 
     #[test]
-    fn test_editor_info_not_installed() {
+    fn test_editor_info_disabled() {
         let info = EditorInfo {
             id: "opencode".to_string(),
             name: "OpenCode".to_string(),
-            is_installed: false,
-            config_path: "".to_string(),
+            is_installed: true,
+            is_enabled: false,
+            config_path: "/home/user/.config/opencode/opencode.json".to_string(),
         };
 
         let json = serde_json::to_string(&info).unwrap();
         let deserialized: EditorInfo = serde_json::from_str(&json).unwrap();
 
-        assert!(!deserialized.is_installed);
+        assert!(deserialized.is_installed);
+        assert!(!deserialized.is_enabled);
     }
 
     // =========================================================================

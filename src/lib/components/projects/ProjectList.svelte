@@ -23,6 +23,10 @@
 		// Reload projects to get updated assignments
 		projectsStore.loadProjects();
 	}
+
+	async function handleFavoriteToggle(project: Project, favorite: boolean) {
+		await projectsStore.toggleFavorite(project.id, favorite);
+	}
 </script>
 
 <div class="space-y-4">
@@ -63,11 +67,12 @@
 		</div>
 	{:else}
 		<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-			{#each projectsStore.projects as project (project.id)}
+			{#each projectsStore.sortedProjects as project (project.id)}
 				<ProjectCard
 					{project}
 					onRemove={onRemoveProject}
 					onClick={() => handleProjectClick(project)}
+					onFavoriteToggle={handleFavoriteToggle}
 				/>
 			{/each}
 		</div>

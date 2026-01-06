@@ -4,6 +4,7 @@
 	import McpCard from './McpCard.svelte';
 	import { SearchBar } from '$lib/components/shared';
 	import { Plug, Globe, Server, Package } from 'lucide-svelte';
+	import { invoke } from '@tauri-apps/api/core';
 
 	type Props = {
 		onEdit?: (mcp: Mcp) => void;
@@ -16,6 +17,15 @@
 	};
 
 	let { onEdit, onDelete, onDuplicate, onTest, showGatewayToggle = false, gatewayMcpIds = new Set(), onGatewayToggle }: Props = $props();
+
+	async function handleFavoriteToggle(mcp: Mcp, favorite: boolean) {
+		try {
+			await invoke('toggle_mcp_favorite', { id: mcp.id, favorite });
+			mcpLibrary.updateMcp({ ...mcp, isFavorite: favorite });
+		} catch (error) {
+			console.error('Failed to toggle favorite:', error);
+		}
+	}
 
 	const typeFilters: { value: 'all' | 'stdio' | 'sse' | 'http'; label: string; icon: typeof Package }[] = [
 		{ value: 'all', label: 'All', icon: Package },
@@ -86,6 +96,7 @@
 					{showGatewayToggle}
 					isInGateway={gatewayMcpIds.has(mcp.id)}
 					{onGatewayToggle}
+					onFavoriteToggle={handleFavoriteToggle}
 				/>
 			{/each}
 		</div>

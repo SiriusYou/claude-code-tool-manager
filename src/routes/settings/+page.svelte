@@ -30,11 +30,12 @@
 		id: string;
 		name: string;
 		isInstalled: boolean;
+		isEnabled: boolean;
 		configPath: string;
 	}
 
 	interface AppSettings {
-		defaultEditor: string;
+		enabledEditors: string[];
 	}
 
 	interface McpServerStatus {
@@ -53,8 +54,8 @@
 	let claudePaths = $state<ClaudePaths | null>(null);
 	let opencodePaths = $state<OpenCodePaths | null>(null);
 	let editors = $state<EditorInfo[]>([]);
-	let appSettings = $state<AppSettings>({ defaultEditor: 'claude_code' });
-	let savingSettings = $state(false);
+	let appSettings = $state<AppSettings>({ enabledEditors: ['claude_code'] });
+	let togglingEditor = $state<string | null>(null);
 
 	// MCP Server state
 	let mcpServerStatus = $state<McpServerStatus | null>(null);
@@ -97,16 +98,28 @@
 		}
 	}
 
-	async function updateDefaultEditor(editorId: string) {
-		savingSettings = true;
+	async function toggleEditor(editorId: string, enabled: boolean) {
+		togglingEditor = editorId;
 		try {
-			await invoke('update_app_settings', { settings: { defaultEditor: editorId } });
-			appSettings.defaultEditor = editorId;
-			notifications.success('Default editor updated');
+			await invoke('toggle_editor', { editorId, enabled });
+			// Update local state
+			const editorIndex = editors.findIndex(e => e.id === editorId);
+			if (editorIndex >= 0) {
+				editors[editorIndex].isEnabled = enabled;
+			}
+			// Update appSettings
+			if (enabled) {
+				if (!appSettings.enabledEditors.includes(editorId)) {
+					appSettings.enabledEditors = [...appSettings.enabledEditors, editorId];
+				}
+			} else {
+				appSettings.enabledEditors = appSettings.enabledEditors.filter(id => id !== editorId);
+			}
+			notifications.success(`${enabled ? 'Enabled' : 'Disabled'} ${getEditorDisplayName(editorId)}`);
 		} catch (err) {
-			notifications.error('Failed to update default editor');
+			notifications.error(`Failed to toggle editor: ${err}`);
 		} finally {
-			savingSettings = false;
+			togglingEditor = null;
 		}
 	}
 
@@ -315,24 +328,22 @@
 />
 
 <div class="flex-1 overflow-auto p-6 space-y-8">
-	<!-- Default Editor Selection -->
+	<!-- Enabled Editors -->
 	<div class="card">
-		<h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">Default Editor</h3>
+		<h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">Enabled Editors</h3>
 		<p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
-			Choose which coding assistant to use by default for new projects. You can override this per project.
+			Enable the coding assistants you want to sync with. When enabled, skills, commands, sub-agents, and MCPs will be synced to all enabled editors simultaneously.
 		</p>
 
 		<div class="space-y-3">
 			{#each editors as editor}
-				<button
-					onclick={() => updateDefaultEditor(editor.id)}
-					disabled={savingSettings}
-					class="w-full flex items-center justify-between p-4 rounded-lg border-2 transition-all {appSettings.defaultEditor === editor.id
+				<div
+					class="w-full flex items-center justify-between p-4 rounded-lg border-2 transition-all {editor.isEnabled
 						? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-						: 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'}"
+						: 'border-gray-200 dark:border-gray-700'}"
 				>
 					<div class="flex items-center gap-3">
-						<div class="w-10 h-10 rounded-lg flex items-center justify-center {appSettings.defaultEditor === editor.id
+						<div class="w-10 h-10 rounded-lg flex items-center justify-center {editor.isEnabled
 							? 'bg-primary-500 text-white'
 							: 'bg-gray-100 dark:bg-gray-800 text-gray-500'}">
 							{#if editor.id === 'claude_code'}
@@ -358,14 +369,28 @@
 							</div>
 						</div>
 					</div>
-					{#if appSettings.defaultEditor === editor.id}
-						<div class="w-5 h-5 rounded-full bg-primary-500 flex items-center justify-center">
-							<Check class="w-3 h-3 text-white" />
-						</div>
-					{/if}
-				</button>
+					<label class="relative inline-flex items-center cursor-pointer">
+						<input
+							type="checkbox"
+							checked={editor.isEnabled}
+							disabled={togglingEditor === editor.id}
+							onchange={(e) => toggleEditor(editor.id, (e.target as HTMLInputElement).checked)}
+							class="sr-only peer"
+						/>
+						<div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary-600 peer-disabled:opacity-50"></div>
+					</label>
+				</div>
 			{/each}
 		</div>
+
+		{#if appSettings.enabledEditors.length === 0}
+			<div class="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+				<p class="text-sm text-amber-700 dark:text-amber-400">
+					<AlertCircle class="w-4 h-4 inline mr-1" />
+					No editors enabled. Enable at least one editor to sync your configurations.
+				</p>
+			</div>
+		{/if}
 	</div>
 
 	<GlobalSettings />

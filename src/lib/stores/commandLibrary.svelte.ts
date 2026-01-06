@@ -21,7 +21,13 @@ class CommandLibraryState {
 			);
 		}
 
-		return result;
+		// Sort by favorites first, then by name
+		return [...result].sort((a, b) => {
+			if (a.isFavorite !== b.isFavorite) {
+				return a.isFavorite ? -1 : 1;
+			}
+			return a.name.localeCompare(b.name);
+		});
 	});
 
 	async load() {
@@ -95,6 +101,10 @@ class CommandLibraryState {
 
 	getCommandById(id: number): Command | undefined {
 		return this.commands.find((c) => c.id === id);
+	}
+
+	updateCommand(command: Command): void {
+		this.commands = this.commands.map((c) => (c.id === command.id ? command : c));
 	}
 
 	setSearch(query: string) {

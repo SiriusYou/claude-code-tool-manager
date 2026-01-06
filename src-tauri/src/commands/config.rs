@@ -29,8 +29,9 @@ fn row_to_mcp(row: &rusqlite::Row, offset: usize) -> rusqlite::Result<Mcp> {
         source: row.get(offset + 11)?,
         source_path: row.get(offset + 12)?,
         is_enabled_global: row.get::<_, i32>(offset + 13)? != 0,
-        created_at: row.get(offset + 14)?,
-        updated_at: row.get(offset + 15)?,
+        is_favorite: row.get::<_, i32>(offset + 14)? != 0,
+        created_at: row.get(offset + 15)?,
+        updated_at: row.get(offset + 16)?,
     })
 }
 
@@ -43,7 +44,7 @@ pub fn get_global_mcps(db: State<'_, Arc<Mutex<Database>>>) -> Result<Vec<Global
         .prepare(
             "SELECT gm.id, gm.mcp_id, gm.is_enabled, gm.env_overrides,
                     m.id, m.name, m.description, m.type, m.command, m.args, m.url, m.headers, m.env,
-                    m.icon, m.tags, m.source, m.source_path, m.is_enabled_global, m.created_at, m.updated_at
+                    m.icon, m.tags, m.source, m.source_path, m.is_enabled_global, m.is_favorite, m.created_at, m.updated_at
              FROM global_mcps gm
              JOIN mcps m ON gm.mcp_id = m.id
              ORDER BY gm.display_order",
@@ -276,7 +277,7 @@ pub fn get_global_mcps_from_db(db: &Database) -> Result<Vec<GlobalMcp>, String> 
         .prepare(
             "SELECT gm.id, gm.mcp_id, gm.is_enabled, gm.env_overrides,
                     m.id, m.name, m.description, m.type, m.command, m.args, m.url, m.headers, m.env,
-                    m.icon, m.tags, m.source, m.source_path, m.is_enabled_global, m.created_at, m.updated_at
+                    m.icon, m.tags, m.source, m.source_path, m.is_enabled_global, m.is_favorite, m.created_at, m.updated_at
              FROM global_mcps gm
              JOIN mcps m ON gm.mcp_id = m.id
              ORDER BY gm.display_order",
