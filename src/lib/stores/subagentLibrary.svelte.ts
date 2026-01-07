@@ -21,7 +21,13 @@ class SubAgentLibraryState {
 			);
 		}
 
-		return result;
+		// Sort by favorites first, then by name
+		return [...result].sort((a, b) => {
+			if (a.isFavorite !== b.isFavorite) {
+				return a.isFavorite ? -1 : 1;
+			}
+			return a.name.localeCompare(b.name);
+		});
 	});
 
 	async load() {
@@ -95,6 +101,10 @@ class SubAgentLibraryState {
 
 	getSubAgentById(id: number): SubAgent | undefined {
 		return this.subagents.find((a) => a.id === id);
+	}
+
+	updateSubAgent(subagent: SubAgent): void {
+		this.subagents = this.subagents.map((a) => (a.id === subagent.id ? subagent : a));
 	}
 
 	setSearch(query: string) {

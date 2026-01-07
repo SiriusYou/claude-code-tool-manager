@@ -229,13 +229,6 @@ pub struct GlobalItemParams {
     pub item_id: i64,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct SyncProjectParams {
-    /// Project ID to sync
-    #[schemars(description = "The project ID to sync configuration for")]
-    pub project_id: i64,
-}
-
 // ============================================================================
 // Tool Router Implementation
 // ============================================================================

@@ -4,6 +4,7 @@
 	import SubAgentCard from './SubAgentCard.svelte';
 	import { SearchBar } from '$lib/components/shared';
 	import { Bot } from 'lucide-svelte';
+	import { invoke } from '@tauri-apps/api/core';
 
 	type Props = {
 		onEdit?: (subagent: SubAgent) => void;
@@ -11,6 +12,15 @@
 	};
 
 	let { onEdit, onDelete }: Props = $props();
+
+	async function handleFavoriteToggle(subagent: SubAgent, favorite: boolean) {
+		try {
+			await invoke('toggle_subagent_favorite', { id: subagent.id, favorite });
+			subagentLibrary.updateSubAgent({ ...subagent, isFavorite: favorite });
+		} catch (error) {
+			console.error('Failed to toggle favorite:', error);
+		}
+	}
 </script>
 
 <div class="space-y-4">
@@ -55,6 +65,7 @@
 					{subagent}
 					{onEdit}
 					{onDelete}
+					onFavoriteToggle={handleFavoriteToggle}
 				/>
 			{/each}
 		</div>

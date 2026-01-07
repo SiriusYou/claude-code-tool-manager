@@ -22,15 +22,10 @@ pub fn get_opencode_paths() -> Result<OpenCodePathsInternal> {
 
     let home = base_dirs.home_dir().to_path_buf();
 
-    // OpenCode uses ~/.config/opencode/ on all platforms
-    let config_dir = if cfg!(windows) {
-        // On Windows, BaseDirs::config_dir() returns AppData\Roaming
-        // but OpenCode uses .config in home directory
-        home.join(".config").join("opencode")
-    } else {
-        // On Unix-like systems, use XDG config dir or ~/.config
-        base_dirs.config_dir().join("opencode")
-    };
+    // OpenCode uses ~/.config/opencode/ on ALL platforms (including macOS)
+    // This is different from macOS convention (~/Library/Application Support/)
+    // but matches what OpenCode actually does
+    let config_dir = home.join(".config").join("opencode");
 
     Ok(OpenCodePathsInternal {
         config_file: config_dir.join("opencode.json"),
@@ -54,26 +49,31 @@ pub fn is_opencode_installed() -> bool {
 }
 
 /// Get project-level OpenCode directory
+#[cfg(test)]
 pub fn project_opencode_dir(project_path: &PathBuf) -> PathBuf {
     project_path.join(".opencode")
 }
 
 /// Get project-level OpenCode config file
+#[cfg(test)]
 pub fn project_opencode_config(project_path: &PathBuf) -> PathBuf {
     project_path.join("opencode.json")
 }
 
 /// Get project-level OpenCode command directory
+#[cfg(test)]
 pub fn project_opencode_command_dir(project_path: &PathBuf) -> PathBuf {
     project_path.join(".opencode").join("command")
 }
 
 /// Get project-level OpenCode agent directory
+#[cfg(test)]
 pub fn project_opencode_agent_dir(project_path: &PathBuf) -> PathBuf {
     project_path.join(".opencode").join("agent")
 }
 
 /// Get project-level OpenCode plugin directory
+#[cfg(test)]
 pub fn project_opencode_plugin_dir(project_path: &PathBuf) -> PathBuf {
     project_path.join(".opencode").join("plugin")
 }

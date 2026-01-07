@@ -130,6 +130,7 @@ pub fn import_mcp_from_registry_in_db(
 }
 
 /// Get an imported registry MCP by ID (for testing)
+#[cfg(test)]
 pub fn get_registry_mcp_by_id(db: &Database, id: i64) -> Result<RegistryMcpEntry, String> {
     db.conn()
         .query_row(

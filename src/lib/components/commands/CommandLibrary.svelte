@@ -4,6 +4,7 @@
 	import CommandCard from './CommandCard.svelte';
 	import { SearchBar } from '$lib/components/shared';
 	import { Terminal } from 'lucide-svelte';
+	import { invoke } from '@tauri-apps/api/core';
 
 	type Props = {
 		onEdit?: (command: Command) => void;
@@ -11,6 +12,15 @@
 	};
 
 	let { onEdit, onDelete }: Props = $props();
+
+	async function handleFavoriteToggle(command: Command, favorite: boolean) {
+		try {
+			await invoke('toggle_command_favorite', { id: command.id, favorite });
+			commandLibrary.updateCommand({ ...command, isFavorite: favorite });
+		} catch (error) {
+			console.error('Failed to toggle favorite:', error);
+		}
+	}
 </script>
 
 <div class="space-y-4">
@@ -55,6 +65,7 @@
 					{command}
 					{onEdit}
 					{onDelete}
+					onFavoriteToggle={handleFavoriteToggle}
 				/>
 			{/each}
 		</div>

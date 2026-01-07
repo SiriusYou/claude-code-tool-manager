@@ -864,6 +864,7 @@ pub fn duplicate_hook(
 // ============================================================================
 
 /// Create a hook directly in the database (for testing)
+#[cfg(test)]
 pub fn create_hook_in_db(db: &Database, hook: &CreateHookRequest) -> Result<Hook, String> {
     let tags_json = hook
         .tags
@@ -893,6 +894,7 @@ pub fn create_hook_in_db(db: &Database, hook: &CreateHookRequest) -> Result<Hook
 }
 
 /// Get a hook by ID directly from the database (for testing)
+#[cfg(test)]
 pub fn get_hook_by_id(db: &Database, id: i64) -> Result<Hook, String> {
     let mut stmt = db
         .conn()
@@ -906,6 +908,7 @@ pub fn get_hook_by_id(db: &Database, id: i64) -> Result<Hook, String> {
 }
 
 /// Get all hooks directly from the database (for testing)
+#[cfg(test)]
 pub fn get_all_hooks_from_db(db: &Database) -> Result<Vec<Hook>, String> {
     let mut stmt = db
         .conn()
@@ -925,6 +928,7 @@ pub fn get_all_hooks_from_db(db: &Database) -> Result<Vec<Hook>, String> {
 }
 
 /// Update a hook directly in the database (for testing)
+#[cfg(test)]
 pub fn update_hook_in_db(db: &Database, id: i64, hook: &CreateHookRequest) -> Result<Hook, String> {
     let tags_json = hook
         .tags
@@ -954,6 +958,7 @@ pub fn update_hook_in_db(db: &Database, id: i64, hook: &CreateHookRequest) -> Re
 }
 
 /// Delete a hook directly from the database (for testing)
+#[cfg(test)]
 pub fn delete_hook_from_db(db: &Database, id: i64) -> Result<(), String> {
     db.conn()
         .execute("DELETE FROM hooks WHERE id = ?", [id])
@@ -962,6 +967,7 @@ pub fn delete_hook_from_db(db: &Database, id: i64) -> Result<(), String> {
 }
 
 /// Add a hook to global hooks directly in the database (for testing)
+#[cfg(test)]
 pub fn add_global_hook_in_db(db: &Database, hook_id: i64) -> Result<(), String> {
     db.conn()
         .execute(
@@ -973,6 +979,7 @@ pub fn add_global_hook_in_db(db: &Database, hook_id: i64) -> Result<(), String> 
 }
 
 /// Get all global hooks directly from the database (for testing)
+#[cfg(test)]
 pub fn get_global_hooks_from_db(db: &Database) -> Result<Vec<GlobalHook>, String> {
     let mut stmt = db
         .conn()
@@ -1002,6 +1009,7 @@ pub fn get_global_hooks_from_db(db: &Database) -> Result<Vec<GlobalHook>, String
 }
 
 /// Toggle a global hook directly in the database (for testing)
+#[cfg(test)]
 pub fn toggle_global_hook_in_db(db: &Database, id: i64, enabled: bool) -> Result<(), String> {
     db.conn()
         .execute(
@@ -1013,6 +1021,7 @@ pub fn toggle_global_hook_in_db(db: &Database, id: i64, enabled: bool) -> Result
 }
 
 /// Remove a global hook directly from the database (for testing)
+#[cfg(test)]
 pub fn remove_global_hook_from_db(db: &Database, hook_id: i64) -> Result<(), String> {
     db.conn()
         .execute("DELETE FROM global_hooks WHERE hook_id = ?", [hook_id])

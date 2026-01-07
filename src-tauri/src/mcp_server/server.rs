@@ -48,24 +48,6 @@ pub struct McpServerStatus {
     pub mcp_endpoint: String,
 }
 
-/// Handle to control a running MCP server
-pub struct McpServerHandle {
-    shutdown_tx: Option<oneshot::Sender<()>>,
-    port: u16,
-}
-
-impl McpServerHandle {
-    pub fn port(&self) -> u16 {
-        self.port
-    }
-
-    pub fn shutdown(mut self) {
-        if let Some(tx) = self.shutdown_tx.take() {
-            let _ = tx.send(());
-        }
-    }
-}
-
 /// MCP server state managed by Tauri
 pub struct McpServerState {
     pub is_running: Arc<AtomicBool>,

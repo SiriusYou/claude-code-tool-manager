@@ -4,6 +4,7 @@
 	import SkillCard from './SkillCard.svelte';
 	import { SearchBar } from '$lib/components/shared';
 	import { Sparkles } from 'lucide-svelte';
+	import { invoke } from '@tauri-apps/api/core';
 
 	type Props = {
 		onEdit?: (skill: Skill) => void;
@@ -11,6 +12,15 @@
 	};
 
 	let { onEdit, onDelete }: Props = $props();
+
+	async function handleFavoriteToggle(skill: Skill, favorite: boolean) {
+		try {
+			await invoke('toggle_skill_favorite', { id: skill.id, favorite });
+			skillLibrary.updateSkill({ ...skill, isFavorite: favorite });
+		} catch (error) {
+			console.error('Failed to toggle favorite:', error);
+		}
+	}
 </script>
 
 <div class="space-y-4">
@@ -55,6 +65,7 @@
 					{skill}
 					{onEdit}
 					{onDelete}
+					onFavoriteToggle={handleFavoriteToggle}
 				/>
 			{/each}
 		</div>

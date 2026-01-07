@@ -28,8 +28,9 @@ fn row_to_mcp(row: &rusqlite::Row) -> rusqlite::Result<Mcp> {
         source: row.get(11)?,
         source_path: row.get(12)?,
         is_enabled_global: row.get::<_, i32>(13)? != 0,
-        created_at: row.get(14)?,
-        updated_at: row.get(15)?,
+        is_favorite: row.get::<_, i32>(14)? != 0,
+        created_at: row.get(15)?,
+        updated_at: row.get(16)?,
     })
 }
 
@@ -44,7 +45,7 @@ pub fn get_all_mcps(db: State<'_, Arc<Mutex<Database>>>) -> Result<Vec<Mcp>, Str
         .conn()
         .prepare(
             "SELECT id, name, description, type, command, args, url, headers, env,
-                    icon, tags, source, source_path, is_enabled_global, created_at, updated_at
+                    icon, tags, source, source_path, is_enabled_global, is_favorite, created_at, updated_at
              FROM mcps ORDER BY name",
         )
         .map_err(|e| {
@@ -69,7 +70,7 @@ pub fn get_mcp(db: State<'_, Arc<Mutex<Database>>>, id: i64) -> Result<Mcp, Stri
         .conn()
         .prepare(
             "SELECT id, name, description, type, command, args, url, headers, env,
-                    icon, tags, source, source_path, is_enabled_global, created_at, updated_at
+                    icon, tags, source, source_path, is_enabled_global, is_favorite, created_at, updated_at
              FROM mcps WHERE id = ?",
         )
         .map_err(|e| e.to_string())?;
@@ -126,7 +127,7 @@ pub fn create_mcp(
         .conn()
         .prepare(
             "SELECT id, name, description, type, command, args, url, headers, env,
-                    icon, tags, source, source_path, is_enabled_global, created_at, updated_at
+                    icon, tags, source, source_path, is_enabled_global, is_favorite, created_at, updated_at
              FROM mcps WHERE id = ?",
         )
         .map_err(|e| e.to_string())?;
@@ -177,7 +178,7 @@ pub fn update_mcp(
         .conn()
         .prepare(
             "SELECT id, name, description, type, command, args, url, headers, env,
-                    icon, tags, source, source_path, is_enabled_global, created_at, updated_at
+                    icon, tags, source, source_path, is_enabled_global, is_favorite, created_at, updated_at
              FROM mcps WHERE id = ?",
         )
         .map_err(|e| e.to_string())?;
@@ -258,7 +259,7 @@ pub fn duplicate_mcp(db: State<'_, Arc<Mutex<Database>>>, id: i64) -> Result<Mcp
         .conn()
         .prepare(
             "SELECT id, name, description, type, command, args, url, headers, env,
-                    icon, tags, source, source_path, is_enabled_global, created_at, updated_at
+                    icon, tags, source, source_path, is_enabled_global, is_favorite, created_at, updated_at
              FROM mcps WHERE id = ?",
         )
         .map_err(|e| e.to_string())?;
@@ -292,6 +293,7 @@ pub fn toggle_global_mcp(
 // ============================================================================
 
 /// Create an MCP directly in the database (for testing)
+#[cfg(test)]
 pub fn create_mcp_in_db(db: &Database, mcp: &CreateMcpRequest) -> Result<Mcp, String> {
     let args_json = mcp.args.as_ref().map(|a| serde_json::to_string(a).unwrap());
     let headers_json = mcp
@@ -325,12 +327,13 @@ pub fn create_mcp_in_db(db: &Database, mcp: &CreateMcpRequest) -> Result<Mcp, St
 }
 
 /// Get an MCP by ID directly from the database (for testing)
+#[cfg(test)]
 pub fn get_mcp_by_id(db: &Database, id: i64) -> Result<Mcp, String> {
     let mut stmt = db
         .conn()
         .prepare(
             "SELECT id, name, description, type, command, args, url, headers, env,
-                    icon, tags, source, source_path, is_enabled_global, created_at, updated_at
+                    icon, tags, source, source_path, is_enabled_global, is_favorite, created_at, updated_at
              FROM mcps WHERE id = ?",
         )
         .map_err(|e| e.to_string())?;
@@ -339,12 +342,13 @@ pub fn get_mcp_by_id(db: &Database, id: i64) -> Result<Mcp, String> {
 }
 
 /// Get all MCPs directly from the database (for testing)
+#[cfg(test)]
 pub fn get_all_mcps_from_db(db: &Database) -> Result<Vec<Mcp>, String> {
     let mut stmt = db
         .conn()
         .prepare(
             "SELECT id, name, description, type, command, args, url, headers, env,
-                    icon, tags, source, source_path, is_enabled_global, created_at, updated_at
+                    icon, tags, source, source_path, is_enabled_global, is_favorite, created_at, updated_at
              FROM mcps ORDER BY name",
         )
         .map_err(|e| e.to_string())?;
@@ -359,6 +363,7 @@ pub fn get_all_mcps_from_db(db: &Database) -> Result<Vec<Mcp>, String> {
 }
 
 /// Update an MCP directly in the database (for testing)
+#[cfg(test)]
 pub fn update_mcp_in_db(db: &Database, id: i64, mcp: &CreateMcpRequest) -> Result<Mcp, String> {
     let args_json = mcp.args.as_ref().map(|a| serde_json::to_string(a).unwrap());
     let headers_json = mcp
@@ -393,6 +398,7 @@ pub fn update_mcp_in_db(db: &Database, id: i64, mcp: &CreateMcpRequest) -> Resul
 }
 
 /// Delete an MCP directly from the database (for testing)
+#[cfg(test)]
 pub fn delete_mcp_from_db(db: &Database, id: i64) -> Result<(), String> {
     db.conn()
         .execute("DELETE FROM mcps WHERE id = ?", [id])
@@ -401,11 +407,28 @@ pub fn delete_mcp_from_db(db: &Database, id: i64) -> Result<(), String> {
 }
 
 /// Toggle global MCP directly in the database (for testing)
+#[cfg(test)]
 pub fn toggle_global_mcp_in_db(db: &Database, id: i64, enabled: bool) -> Result<(), String> {
     db.conn()
         .execute(
             "UPDATE mcps SET is_enabled_global = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             params![enabled as i32, id],
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn toggle_mcp_favorite(
+    db: State<'_, Arc<Mutex<Database>>>,
+    id: i64,
+    favorite: bool,
+) -> Result<(), String> {
+    let db = db.lock().map_err(|e| e.to_string())?;
+    db.conn()
+        .execute(
+            "UPDATE mcps SET is_favorite = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            params![favorite as i32, id],
         )
         .map_err(|e| e.to_string())?;
     Ok(())

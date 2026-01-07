@@ -4,12 +4,6 @@ use anyhow::Result;
 use directories::BaseDirs;
 use std::path::Path;
 
-/// Editor type for routing agent writes
-pub enum EditorType {
-    ClaudeCode,
-    OpenCode,
-}
-
 /// Generate markdown content for a sub-agent (.claude/agents/name.md)
 pub(crate) fn generate_subagent_markdown(subagent: &SubAgent) -> String {
     let mut frontmatter = String::from("---\n");
@@ -98,6 +92,44 @@ pub fn delete_project_subagent(project_path: &Path, name: &str) -> Result<()> {
 // ============================================================================
 // OpenCode Support
 // ============================================================================
+// OpenCode has a different frontmatter format:
+// - tools: object with tool names as keys and boolean values
+// - permission: object (not permissionMode string)
+// - No "name" field (filename is the name)
+// - No "skills" field
+
+/// Generate markdown content for an OpenCode agent (.opencode/agent/name.md)
+pub(crate) fn generate_subagent_markdown_opencode(subagent: &SubAgent) -> String {
+    let mut frontmatter = String::from("---\n");
+
+    // OpenCode requires description
+    frontmatter.push_str(&format!("description: \"{}\"\n", subagent.description));
+
+    // OpenCode uses model with provider prefix (e.g., "anthropic/claude-sonnet-4-20250514")
+    if let Some(ref model) = subagent.model {
+        if !model.is_empty() {
+            frontmatter.push_str(&format!("model: {}\n", model));
+        }
+    }
+
+    // OpenCode tools format: object with tool names as keys and boolean values
+    if let Some(ref tools) = subagent.tools {
+        if !tools.is_empty() {
+            frontmatter.push_str("tools:\n");
+            for tool in tools {
+                // Convert tool name to lowercase for OpenCode
+                let tool_lower = tool.to_lowercase();
+                frontmatter.push_str(&format!("  {}: true\n", tool_lower));
+            }
+        }
+    }
+
+    // Note: OpenCode uses "permission" object, not "permissionMode" string
+    // We skip permissionMode for OpenCode as the format is different
+
+    frontmatter.push_str("---\n\n");
+    format!("{}{}", frontmatter, subagent.content)
+}
 
 /// Write a sub-agent to OpenCode's format
 /// OpenCode uses {base_path}/agent/{name}.md (singular "agent")
@@ -106,7 +138,7 @@ pub fn write_subagent_file_opencode(base_path: &Path, subagent: &SubAgent) -> Re
     std::fs::create_dir_all(&agents_dir)?;
 
     let file_path = agents_dir.join(format!("{}.md", subagent.name));
-    let content = generate_subagent_markdown(subagent);
+    let content = generate_subagent_markdown_opencode(subagent);
     std::fs::write(file_path, content)?;
 
     Ok(())
@@ -145,32 +177,6 @@ pub fn delete_project_subagent_opencode(project_path: &Path, name: &str) -> Resu
     delete_subagent_file_opencode(&opencode_dir, name)
 }
 
-/// Write a sub-agent based on editor type
-pub fn write_subagent_for_editor(
-    base_path: &Path,
-    subagent: &SubAgent,
-    editor: EditorType,
-) -> Result<()> {
-    match editor {
-        EditorType::ClaudeCode => write_subagent_file(base_path, subagent),
-        EditorType::OpenCode => {
-            let opencode_dir = base_path.join(".opencode");
-            write_subagent_file_opencode(&opencode_dir, subagent)
-        }
-    }
-}
-
-/// Delete a sub-agent based on editor type
-pub fn delete_subagent_for_editor(base_path: &Path, name: &str, editor: EditorType) -> Result<()> {
-    match editor {
-        EditorType::ClaudeCode => delete_subagent_file(base_path, name),
-        EditorType::OpenCode => {
-            let opencode_dir = base_path.join(".opencode");
-            delete_subagent_file_opencode(&opencode_dir, name)
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -192,6 +198,8 @@ mod tests {
             skills: Some(vec!["lint".to_string(), "format".to_string()]),
             tags: Some(vec!["review".to_string(), "quality".to_string()]),
             source: "manual".to_string(),
+            source_path: None,
+            is_favorite: false,
             created_at: "2024-01-01".to_string(),
             updated_at: "2024-01-01".to_string(),
         }
@@ -209,6 +217,8 @@ mod tests {
             skills: None,
             tags: None,
             source: "manual".to_string(),
+            source_path: None,
+            is_favorite: false,
             created_at: "2024-01-01".to_string(),
             updated_at: "2024-01-01".to_string(),
         }
@@ -396,53 +406,94 @@ mod tests {
     }
 
     // =========================================================================
-    // Editor type routing tests
+    // OpenCode markdown format tests
     // =========================================================================
 
     #[test]
-    fn test_write_subagent_for_editor_claude_code() {
-        let temp_dir = TempDir::new().unwrap();
+    fn test_generate_subagent_markdown_opencode_tools_as_object() {
         let subagent = sample_full_subagent();
+        let md = generate_subagent_markdown_opencode(&subagent);
 
-        write_subagent_for_editor(temp_dir.path(), &subagent, EditorType::ClaudeCode).unwrap();
-
-        let expected_path = temp_dir
-            .path()
-            .join(".claude")
-            .join("agents")
-            .join("code-reviewer.md");
-        assert!(expected_path.exists());
+        // OpenCode tools should be an object with key:value pairs, NOT a comma-separated string
+        assert!(md.contains("tools:\n"));
+        assert!(md.contains("  read: true\n"));
+        assert!(md.contains("  grep: true\n"));
+        assert!(md.contains("  glob: true\n"));
+        // Should NOT have Claude Code's comma-separated format
+        assert!(!md.contains("tools: Read, Grep, Glob"));
     }
 
     #[test]
-    fn test_write_subagent_for_editor_opencode() {
-        let temp_dir = TempDir::new().unwrap();
+    fn test_generate_subagent_markdown_opencode_no_name_field() {
         let subagent = sample_full_subagent();
+        let md = generate_subagent_markdown_opencode(&subagent);
 
-        write_subagent_for_editor(temp_dir.path(), &subagent, EditorType::OpenCode).unwrap();
-
-        let expected_path = temp_dir
-            .path()
-            .join(".opencode")
-            .join("agent")
-            .join("code-reviewer.md");
-        assert!(expected_path.exists());
+        // OpenCode doesn't use name field (filename is the name)
+        assert!(!md.contains("name:"));
     }
 
     #[test]
-    fn test_delete_subagent_for_editor_claude_code() {
+    fn test_generate_subagent_markdown_opencode_no_skills_field() {
+        let subagent = sample_full_subagent();
+        let md = generate_subagent_markdown_opencode(&subagent);
+
+        // OpenCode doesn't have skills field
+        assert!(!md.contains("skills:"));
+    }
+
+    #[test]
+    fn test_generate_subagent_markdown_opencode_no_permission_mode() {
+        let subagent = sample_full_subagent();
+        let md = generate_subagent_markdown_opencode(&subagent);
+
+        // OpenCode uses "permission" object not "permissionMode" string
+        assert!(!md.contains("permissionMode:"));
+    }
+
+    #[test]
+    fn test_generate_subagent_markdown_opencode_quoted_description() {
+        let subagent = sample_full_subagent();
+        let md = generate_subagent_markdown_opencode(&subagent);
+
+        // OpenCode description should be quoted
+        assert!(md.contains("description: \"Reviews code for bugs and improvements\"\n"));
+    }
+
+    #[test]
+    fn test_generate_subagent_markdown_opencode_has_model() {
+        let subagent = sample_full_subagent();
+        let md = generate_subagent_markdown_opencode(&subagent);
+
+        // Model should be included
+        assert!(md.contains("model: sonnet\n"));
+    }
+
+    #[test]
+    fn test_generate_subagent_markdown_opencode_minimal() {
+        let subagent = sample_minimal_subagent();
+        let md = generate_subagent_markdown_opencode(&subagent);
+
+        // Should have description and content
+        assert!(md.contains("description: \"A simple agent\"\n"));
+        assert!(md.contains("---\n\nYou are a helpful assistant."));
+        // Should not have empty tools block
+        assert!(!md.contains("tools:"));
+    }
+
+    #[test]
+    fn test_opencode_subagent_content_uses_correct_format() {
         let temp_dir = TempDir::new().unwrap();
         let subagent = sample_full_subagent();
 
-        write_subagent_for_editor(temp_dir.path(), &subagent, EditorType::ClaudeCode).unwrap();
-        delete_subagent_for_editor(temp_dir.path(), &subagent.name, EditorType::ClaudeCode)
-            .unwrap();
+        write_subagent_file_opencode(temp_dir.path(), &subagent).unwrap();
 
-        let expected_path = temp_dir
-            .path()
-            .join(".claude")
-            .join("agents")
-            .join("code-reviewer.md");
-        assert!(!expected_path.exists());
+        let file_path = temp_dir.path().join("agent").join("code-reviewer.md");
+        let content = std::fs::read_to_string(file_path).unwrap();
+
+        // Verify OpenCode format in actual written file
+        assert!(content.contains("tools:\n  read: true\n"));
+        assert!(content.contains("description: \"Reviews code for bugs and improvements\""));
+        assert!(!content.contains("name:"));
+        assert!(!content.contains("skills:"));
     }
 }

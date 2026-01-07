@@ -206,6 +206,7 @@ pub fn run() {
             commands::mcp::delete_mcp,
             commands::mcp::duplicate_mcp,
             commands::mcp::toggle_global_mcp,
+            commands::mcp::toggle_mcp_favorite,
             // Project Commands
             commands::projects::get_all_projects,
             commands::projects::add_project,
@@ -214,6 +215,7 @@ pub fn run() {
             commands::projects::assign_mcp_to_project,
             commands::projects::remove_mcp_from_project,
             commands::projects::toggle_project_mcp,
+            commands::projects::toggle_project_favorite,
             commands::projects::sync_project_config,
             // Global Settings Commands
             commands::config::get_global_mcps,
@@ -251,6 +253,7 @@ pub fn run() {
             commands::skills::create_skill_file,
             commands::skills::update_skill_file,
             commands::skills::delete_skill_file,
+            commands::skills::toggle_skill_favorite,
             // Slash Command Commands
             commands::commands::get_all_commands,
             commands::commands::create_command,
@@ -264,6 +267,7 @@ pub fn run() {
             commands::commands::remove_command_from_project,
             commands::commands::toggle_project_command,
             commands::commands::get_project_commands,
+            commands::commands::toggle_command_favorite,
             // Sub-Agent Commands
             commands::subagents::get_all_subagents,
             commands::subagents::create_subagent,
@@ -277,6 +281,7 @@ pub fn run() {
             commands::subagents::remove_subagent_from_project,
             commands::subagents::toggle_project_subagent,
             commands::subagents::get_project_subagents,
+            commands::subagents::toggle_subagent_favorite,
             // Hook Commands
             commands::hooks::get_all_hooks,
             commands::hooks::get_hook_templates,
@@ -330,7 +335,7 @@ pub fn run() {
             commands::settings::update_app_settings,
             commands::settings::get_available_editors,
             commands::settings::get_opencode_paths_cmd,
-            commands::settings::update_project_editor_type,
+            commands::settings::toggle_editor,
             // Debug Commands
             commands::debug::enable_debug_mode,
             commands::debug::disable_debug_mode,

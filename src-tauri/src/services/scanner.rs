@@ -30,19 +30,13 @@ pub async fn run_startup_scan(app: &tauri::AppHandle) -> Result<()> {
     let plugin_count = scan_plugins(&db)?;
     log::info!("Found {} MCPs from plugins", plugin_count);
 
-    // Scan global command skills from ~/.claude/commands/
-    let skill_count = scan_global_skills(&db)?;
-    log::info!(
-        "Found {} command skills from ~/.claude/commands/",
-        skill_count
-    );
+    // Scan global commands from ~/.claude/commands/
+    let command_count = scan_global_commands(&db)?;
+    log::info!("Found {} commands from ~/.claude/commands/", command_count);
 
-    // Scan global agent skills from ~/.claude/skills/
-    let agent_skill_count = scan_global_agent_skills(&db)?;
-    log::info!(
-        "Found {} agent skills from ~/.claude/skills/",
-        agent_skill_count
-    );
+    // Scan global skills from ~/.claude/skills/
+    let skill_count = scan_global_skills(&db)?;
+    log::info!("Found {} skills from ~/.claude/skills/", skill_count);
 
     // Scan global agents from ~/.claude/agents/
     let agent_count = scan_global_agents(&db)?;
@@ -195,16 +189,16 @@ pub fn scan_claude_json(db: &Database) -> Result<usize> {
             mcp_count += 1;
         }
 
-        // Scan project-level command skills from .claude/commands/
+        // Scan project-level commands from .claude/commands/
         let project_commands_dir = Path::new(&path_to_check).join(".claude").join("commands");
         if project_commands_dir.exists() {
-            scan_project_skills(db, project_id, &project_commands_dir)?;
+            scan_project_commands(db, project_id, &project_commands_dir)?;
         }
 
-        // Scan project-level agent skills from .claude/skills/
+        // Scan project-level skills from .claude/skills/
         let project_skills_dir = Path::new(&path_to_check).join(".claude").join("skills");
         if project_skills_dir.exists() {
-            scan_project_agent_skills(db, project_id, &project_skills_dir)?;
+            scan_project_skills(db, project_id, &project_skills_dir)?;
         }
 
         // Scan project-level agents from .claude/agents/
@@ -279,6 +273,11 @@ fn get_or_create_mcp(
         .ok();
 
     if let Some(id) = existing_id {
+        // Update source_path if not already set
+        db.conn().execute(
+            "UPDATE mcps SET source_path = ? WHERE id = ? AND (source_path IS NULL OR source_path = '')",
+            params![source_path, id],
+        )?;
         return Ok(id);
     }
 
@@ -364,15 +363,25 @@ pub fn scan_plugins(db: &Database) -> Result<usize> {
                 match config_parser::parse_mcp_file(entry.path()) {
                     Ok(mcps) => {
                         for mcp in mcps {
-                            // Check if already exists
-                            let exists: bool = db
-                                .conn()
-                                .query_row("SELECT 1 FROM mcps WHERE name = ?", [&mcp.name], |_| {
-                                    Ok(true)
-                                })
-                                .unwrap_or(false);
+                            let source_path = entry.path().to_string_lossy().to_string();
 
-                            if !exists {
+                            // Check if already exists
+                            let existing_id: Option<i64> = db
+                                .conn()
+                                .query_row(
+                                    "SELECT id FROM mcps WHERE name = ?",
+                                    [&mcp.name],
+                                    |row| row.get(0),
+                                )
+                                .ok();
+
+                            if let Some(id) = existing_id {
+                                // Update source_path if not already set
+                                db.conn().execute(
+                                    "UPDATE mcps SET source_path = ? WHERE id = ? AND (source_path IS NULL OR source_path = '')",
+                                    params![&source_path, id],
+                                )?;
+                            } else {
                                 let args_json =
                                     mcp.args.as_ref().map(|a| serde_json::to_string(a).unwrap());
                                 let headers_json = mcp
@@ -393,7 +402,7 @@ pub fn scan_plugins(db: &Database) -> Result<usize> {
                                         mcp.url,
                                         headers_json,
                                         env_json,
-                                        entry.path().to_string_lossy().to_string()
+                                        source_path
                                     ],
                                 );
 
@@ -414,8 +423,8 @@ pub fn scan_plugins(db: &Database) -> Result<usize> {
     Ok(count)
 }
 
-/// Scan global skills from ~/.claude/commands/
-pub fn scan_global_skills(db: &Database) -> Result<usize> {
+/// Scan global commands from ~/.claude/commands/
+pub fn scan_global_commands(db: &Database) -> Result<usize> {
     let paths = get_claude_paths()?;
     let mut count = 0;
 
@@ -426,41 +435,12 @@ pub fn scan_global_skills(db: &Database) -> Result<usize> {
 
             // Only process .md files
             if path.extension().map(|e| e == "md").unwrap_or(false) {
-                if let Some(skill) = parse_skill_file(&path) {
-                    // Check if already exists
-                    let exists: bool = db
-                        .conn()
-                        .query_row("SELECT 1 FROM skills WHERE name = ?", [&skill.name], |_| {
-                            Ok(true)
-                        })
-                        .unwrap_or(false);
-
-                    if !exists {
-                        let tags_json = if skill.tags.is_empty() {
-                            None
-                        } else {
-                            Some(serde_json::to_string(&skill.tags).unwrap())
-                        };
-
-                        let result = db.conn().execute(
-                            "INSERT INTO skills (name, description, content, skill_type, allowed_tools, argument_hint, model, disable_model_invocation, tags, source)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'auto-detected')",
-                            params![
-                                skill.name,
-                                skill.description,
-                                skill.content,
-                                skill.skill_type,
-                                skill.allowed_tools,
-                                skill.argument_hint,
-                                skill.model,
-                                skill.disable_model_invocation,
-                                tags_json
-                            ],
-                        );
-
-                        if result.is_ok() {
-                            count += 1;
-                        }
+                if let Some(command) = parse_skill_file(&path) {
+                    // Use get_or_create_command to insert into commands table
+                    let source_path = path.to_string_lossy().to_string();
+                    let (_, was_created) = get_or_create_command(db, &command, &source_path)?;
+                    if was_created {
+                        count += 1;
                     }
                 }
             }
@@ -470,8 +450,8 @@ pub fn scan_global_skills(db: &Database) -> Result<usize> {
     Ok(count)
 }
 
-/// Scan global agent skills from ~/.claude/skills/ directories
-pub fn scan_global_agent_skills(db: &Database) -> Result<usize> {
+/// Scan global skills from ~/.claude/skills/ directories
+pub fn scan_global_skills(db: &Database) -> Result<usize> {
     let paths = get_claude_paths()?;
     let mut count = 0;
 
@@ -483,45 +463,16 @@ pub fn scan_global_agent_skills(db: &Database) -> Result<usize> {
             // Only process directories (each skill is a directory with SKILL.md)
             if path.is_dir() {
                 if let Some((skill, files)) = parse_agent_skill_dir(&path) {
-                    // Check if already exists
-                    let exists: bool = db
-                        .conn()
-                        .query_row("SELECT 1 FROM skills WHERE name = ?", [&skill.name], |_| {
-                            Ok(true)
-                        })
-                        .unwrap_or(false);
+                    // Use get_or_create_skill to insert into skills table
+                    let source_path = path.to_string_lossy().to_string();
+                    let (skill_id, was_created) = get_or_create_skill(db, &skill, &source_path)?;
 
-                    if !exists {
-                        let tags_json = if skill.tags.is_empty() {
-                            None
-                        } else {
-                            Some(serde_json::to_string(&skill.tags).unwrap())
-                        };
-
-                        let result = db.conn().execute(
-                            "INSERT INTO skills (name, description, content, skill_type, allowed_tools, argument_hint, model, disable_model_invocation, tags, source)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'auto-detected')",
-                            params![
-                                skill.name,
-                                skill.description,
-                                skill.content,
-                                skill.skill_type,
-                                skill.allowed_tools,
-                                skill.argument_hint,
-                                skill.model,
-                                skill.disable_model_invocation,
-                                tags_json
-                            ],
-                        );
-
-                        if result.is_ok() {
-                            let skill_id = db.conn().last_insert_rowid();
-                            // Insert associated skill files
-                            if !files.is_empty() {
-                                let _ = insert_skill_files(db, skill_id, &files);
-                            }
-                            count += 1;
+                    // Insert skill files if this is a new skill
+                    if was_created {
+                        if !files.is_empty() {
+                            let _ = insert_skill_files(db, skill_id, &files);
                         }
+                        count += 1;
                     }
                 }
             }
@@ -544,17 +495,25 @@ pub fn scan_global_agents(db: &Database) -> Result<usize> {
             // Only process .md files
             if path.extension().map(|e| e == "md").unwrap_or(false) {
                 if let Some(agent) = parse_agent_file(&path) {
+                    let source_path = path.to_string_lossy().to_string();
+
                     // Check if already exists
-                    let exists: bool = db
+                    let existing_id: Option<i64> = db
                         .conn()
                         .query_row(
-                            "SELECT 1 FROM subagents WHERE name = ?",
+                            "SELECT id FROM subagents WHERE name = ?",
                             [&agent.name],
-                            |_| Ok(true),
+                            |row| row.get(0),
                         )
-                        .unwrap_or(false);
+                        .ok();
 
-                    if !exists {
+                    if let Some(id) = existing_id {
+                        // Update source_path if not already set
+                        db.conn().execute(
+                            "UPDATE subagents SET source_path = ? WHERE id = ? AND (source_path IS NULL OR source_path = '')",
+                            params![&source_path, id],
+                        )?;
+                    } else {
                         let tools_json = if agent.tools.is_empty() {
                             None
                         } else {
@@ -572,8 +531,8 @@ pub fn scan_global_agents(db: &Database) -> Result<usize> {
                         };
 
                         let result = db.conn().execute(
-                            "INSERT INTO subagents (name, description, content, tools, model, permission_mode, skills, tags, source)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'auto-detected')",
+                            "INSERT INTO subagents (name, description, content, tools, model, permission_mode, skills, tags, source, source_path)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'auto-detected', ?)",
                             params![
                                 agent.name,
                                 agent.description,
@@ -582,7 +541,8 @@ pub fn scan_global_agents(db: &Database) -> Result<usize> {
                                 agent.model,
                                 agent.permission_mode,
                                 skills_json,
-                                tags_json
+                                tags_json,
+                                source_path
                             ],
                         );
 
@@ -870,8 +830,8 @@ pub(crate) fn parse_frontmatter(
     (frontmatter, content.to_string())
 }
 
-/// Scan project-level command skills and assign to project
-fn scan_project_skills(db: &Database, project_id: i64, commands_dir: &Path) -> Result<usize> {
+/// Scan project-level commands from .claude/commands/ and assign to project
+fn scan_project_commands(db: &Database, project_id: i64, commands_dir: &Path) -> Result<usize> {
     let mut count = 0;
 
     for entry in std::fs::read_dir(commands_dir)? {
@@ -880,12 +840,13 @@ fn scan_project_skills(db: &Database, project_id: i64, commands_dir: &Path) -> R
 
         // Only process .md files
         if path.extension().map(|e| e == "md").unwrap_or(false) {
-            if let Some(skill) = parse_skill_file(&path) {
-                // Get or create the skill in the library
-                let (skill_id, _) = get_or_create_skill(db, &skill)?;
+            if let Some(command) = parse_skill_file(&path) {
+                // Get or create the command in the library
+                let source_path = path.to_string_lossy().to_string();
+                let (command_id, _) = get_or_create_command(db, &command, &source_path)?;
 
-                // Assign skill to project if not already assigned
-                assign_skill_to_project(db, project_id, skill_id)?;
+                // Assign command to project if not already assigned
+                assign_command_to_project(db, project_id, command_id)?;
 
                 count += 1;
             }
@@ -895,8 +856,8 @@ fn scan_project_skills(db: &Database, project_id: i64, commands_dir: &Path) -> R
     Ok(count)
 }
 
-/// Scan project-level agent skills from .claude/skills/ directories
-fn scan_project_agent_skills(db: &Database, project_id: i64, skills_dir: &Path) -> Result<usize> {
+/// Scan project-level skills from .claude/skills/ and assign to project
+fn scan_project_skills(db: &Database, project_id: i64, skills_dir: &Path) -> Result<usize> {
     let mut count = 0;
 
     for entry in std::fs::read_dir(skills_dir)? {
@@ -907,7 +868,8 @@ fn scan_project_agent_skills(db: &Database, project_id: i64, skills_dir: &Path) 
         if path.is_dir() {
             if let Some((skill, files)) = parse_agent_skill_dir(&path) {
                 // Get or create the skill in the library
-                let (skill_id, was_created) = get_or_create_skill(db, &skill)?;
+                let source_path = path.to_string_lossy().to_string();
+                let (skill_id, was_created) = get_or_create_skill(db, &skill, &source_path)?;
 
                 // Insert skill files if this is a new skill
                 if was_created && !files.is_empty() {
@@ -937,7 +899,8 @@ fn scan_project_agents(db: &Database, project_id: i64, agents_dir: &Path) -> Res
         if path.extension().map(|e| e == "md").unwrap_or(false) {
             if let Some(agent) = parse_agent_file(&path) {
                 // Get or create the agent in the library
-                let agent_id = get_or_create_agent(db, &agent)?;
+                let source_path = path.to_string_lossy().to_string();
+                let agent_id = get_or_create_agent(db, &agent, &source_path)?;
 
                 // Assign agent to project if not already assigned
                 assign_agent_to_project(db, project_id, agent_id)?;
@@ -951,7 +914,11 @@ fn scan_project_agents(db: &Database, project_id: i64, agents_dir: &Path) -> Res
 }
 
 /// Get or create a skill in the database, returning (skill_id, was_created)
-fn get_or_create_skill(db: &Database, skill: &ParsedSkill) -> Result<(i64, bool)> {
+fn get_or_create_skill(
+    db: &Database,
+    skill: &ParsedSkill,
+    source_path: &str,
+) -> Result<(i64, bool)> {
     // Try to find existing skill by name
     let existing_id: Option<i64> = db
         .conn()
@@ -963,6 +930,11 @@ fn get_or_create_skill(db: &Database, skill: &ParsedSkill) -> Result<(i64, bool)
         .ok();
 
     if let Some(id) = existing_id {
+        // Update source_path if not already set
+        db.conn().execute(
+            "UPDATE skills SET source_path = ? WHERE id = ? AND (source_path IS NULL OR source_path = '')",
+            params![source_path, id],
+        )?;
         return Ok((id, false));
     }
 
@@ -974,18 +946,17 @@ fn get_or_create_skill(db: &Database, skill: &ParsedSkill) -> Result<(i64, bool)
     };
 
     db.conn().execute(
-        "INSERT INTO skills (name, description, content, skill_type, allowed_tools, argument_hint, model, disable_model_invocation, tags, source)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'auto-detected')",
+        "INSERT INTO skills (name, description, content, allowed_tools, model, disable_model_invocation, tags, source, source_path)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'auto-detected', ?)",
         params![
             skill.name,
             skill.description,
             skill.content,
-            skill.skill_type,
             skill.allowed_tools,
-            skill.argument_hint,
             skill.model,
             skill.disable_model_invocation,
-            tags_json
+            tags_json,
+            source_path
         ],
     )?;
 
@@ -1018,7 +989,7 @@ fn insert_skill_files(db: &Database, skill_id: i64, files: &[ParsedSkillFile]) -
 }
 
 /// Get or create an agent in the database
-fn get_or_create_agent(db: &Database, agent: &ParsedAgent) -> Result<i64> {
+fn get_or_create_agent(db: &Database, agent: &ParsedAgent, source_path: &str) -> Result<i64> {
     // Try to find existing agent by name
     let existing_id: Option<i64> = db
         .conn()
@@ -1030,6 +1001,11 @@ fn get_or_create_agent(db: &Database, agent: &ParsedAgent) -> Result<i64> {
         .ok();
 
     if let Some(id) = existing_id {
+        // Update source_path if not already set
+        db.conn().execute(
+            "UPDATE subagents SET source_path = ? WHERE id = ? AND (source_path IS NULL OR source_path = '')",
+            params![source_path, id],
+        )?;
         return Ok(id);
     }
 
@@ -1051,8 +1027,8 @@ fn get_or_create_agent(db: &Database, agent: &ParsedAgent) -> Result<i64> {
     };
 
     db.conn().execute(
-        "INSERT INTO subagents (name, description, content, tools, model, permission_mode, skills, tags, source)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'auto-detected')",
+        "INSERT INTO subagents (name, description, content, tools, model, permission_mode, skills, tags, source, source_path)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'auto-detected', ?)",
         params![
             agent.name,
             agent.description,
@@ -1061,7 +1037,8 @@ fn get_or_create_agent(db: &Database, agent: &ParsedAgent) -> Result<i64> {
             agent.model,
             agent.permission_mode,
             skills_json,
-            tags_json
+            tags_json,
+            source_path
         ],
     )?;
 
@@ -1084,6 +1061,77 @@ fn assign_skill_to_project(db: &Database, project_id: i64, skill_id: i64) -> Res
         db.conn().execute(
             "INSERT INTO project_skills (project_id, skill_id, is_enabled) VALUES (?, ?, 1)",
             params![project_id, skill_id],
+        )?;
+    }
+
+    Ok(())
+}
+
+/// Get or create a command in the database, returning (command_id, was_created)
+fn get_or_create_command(
+    db: &Database,
+    command: &ParsedSkill,
+    source_path: &str,
+) -> Result<(i64, bool)> {
+    // Try to find existing command by name
+    let existing_id: Option<i64> = db
+        .conn()
+        .query_row(
+            "SELECT id FROM commands WHERE name = ?",
+            [&command.name],
+            |row| row.get(0),
+        )
+        .ok();
+
+    if let Some(id) = existing_id {
+        // Update source_path if not already set
+        db.conn().execute(
+            "UPDATE commands SET source_path = ? WHERE id = ? AND (source_path IS NULL OR source_path = '')",
+            params![source_path, id],
+        )?;
+        return Ok((id, false));
+    }
+
+    // Create new command
+    let tags_json = if command.tags.is_empty() {
+        None
+    } else {
+        Some(serde_json::to_string(&command.tags).unwrap())
+    };
+
+    db.conn().execute(
+        "INSERT INTO commands (name, description, content, allowed_tools, model, tags, source, source_path)
+         VALUES (?, ?, ?, ?, ?, ?, 'auto-detected', ?)",
+        params![
+            command.name,
+            command.description,
+            command.content,
+            command.allowed_tools,
+            command.model,
+            tags_json,
+            source_path
+        ],
+    )?;
+
+    Ok((db.conn().last_insert_rowid(), true))
+}
+
+/// Assign a command to a project
+fn assign_command_to_project(db: &Database, project_id: i64, command_id: i64) -> Result<()> {
+    // Check if already assigned
+    let exists: bool = db
+        .conn()
+        .query_row(
+            "SELECT 1 FROM project_commands WHERE project_id = ? AND command_id = ?",
+            params![project_id, command_id],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+
+    if !exists {
+        db.conn().execute(
+            "INSERT INTO project_commands (project_id, command_id, is_enabled) VALUES (?, ?, 1)",
+            params![project_id, command_id],
         )?;
     }
 
@@ -1377,15 +1425,23 @@ pub fn scan_opencode_config(db: &Database) -> Result<usize> {
             other => other,
         };
 
-        // Check if already exists
-        let exists: bool = db
-            .conn()
-            .query_row("SELECT 1 FROM mcps WHERE name = ?", [&mcp.name], |_| {
-                Ok(true)
-            })
-            .unwrap_or(false);
+        let source_path = paths.config_file.to_string_lossy().to_string();
 
-        if !exists {
+        // Check if already exists
+        let existing_id: Option<i64> = db
+            .conn()
+            .query_row("SELECT id FROM mcps WHERE name = ?", [&mcp.name], |row| {
+                row.get(0)
+            })
+            .ok();
+
+        if let Some(id) = existing_id {
+            // Update source_path if not already set
+            db.conn().execute(
+                "UPDATE mcps SET source_path = ? WHERE id = ? AND (source_path IS NULL OR source_path = '')",
+                params![&source_path, id],
+            )?;
+        } else {
             let args_json = match &mcp.args {
                 Some(args) if !args.is_empty() => Some(serde_json::to_string(args).unwrap()),
                 _ => None,
@@ -1412,7 +1468,7 @@ pub fn scan_opencode_config(db: &Database) -> Result<usize> {
                     mcp.url,
                     headers_json,
                     env_json,
-                    paths.config_file.to_string_lossy().to_string()
+                    source_path
                 ],
             );
 
@@ -1461,15 +1517,13 @@ pub fn scan_opencode_global_commands(db: &Database) -> Result<usize> {
                     };
 
                     let result = db.conn().execute(
-                        "INSERT INTO skills (name, description, content, skill_type, allowed_tools, argument_hint, model, disable_model_invocation, tags, source)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'opencode')",
+                        "INSERT INTO skills (name, description, content, allowed_tools, model, disable_model_invocation, tags, source)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, 'opencode')",
                         params![
                             skill.name,
                             skill.description,
                             skill.content,
-                            skill.skill_type,
                             skill.allowed_tools,
-                            skill.argument_hint,
                             skill.model,
                             skill.disable_model_invocation,
                             tags_json
@@ -1507,17 +1561,25 @@ pub fn scan_opencode_global_agents(db: &Database) -> Result<usize> {
         // Only process .md files
         if path.extension().map(|e| e == "md").unwrap_or(false) {
             if let Some(agent) = parse_agent_file(&path) {
+                let source_path = path.to_string_lossy().to_string();
+
                 // Check if already exists
-                let exists: bool = db
+                let existing_id: Option<i64> = db
                     .conn()
                     .query_row(
-                        "SELECT 1 FROM subagents WHERE name = ?",
+                        "SELECT id FROM subagents WHERE name = ?",
                         [&agent.name],
-                        |_| Ok(true),
+                        |row| row.get(0),
                     )
-                    .unwrap_or(false);
+                    .ok();
 
-                if !exists {
+                if let Some(id) = existing_id {
+                    // Update source_path if not already set
+                    db.conn().execute(
+                        "UPDATE subagents SET source_path = ? WHERE id = ? AND (source_path IS NULL OR source_path = '')",
+                        params![&source_path, id],
+                    )?;
+                } else {
                     let tools_json = if agent.tools.is_empty() {
                         None
                     } else {
@@ -1535,8 +1597,8 @@ pub fn scan_opencode_global_agents(db: &Database) -> Result<usize> {
                     };
 
                     let result = db.conn().execute(
-                        "INSERT INTO subagents (name, description, content, tools, model, permission_mode, skills, tags, source)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'opencode')",
+                        "INSERT INTO subagents (name, description, content, tools, model, permission_mode, skills, tags, source, source_path)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'opencode', ?)",
                         params![
                             agent.name,
                             agent.description,
@@ -1545,7 +1607,8 @@ pub fn scan_opencode_global_agents(db: &Database) -> Result<usize> {
                             agent.model,
                             agent.permission_mode,
                             skills_json,
-                            tags_json
+                            tags_json,
+                            source_path
                         ],
                     );
 
@@ -1553,147 +1616,6 @@ pub fn scan_opencode_global_agents(db: &Database) -> Result<usize> {
                         count += 1;
                     }
                 }
-            }
-        }
-    }
-
-    Ok(count)
-}
-
-/// Scan OpenCode project configs and import their MCPs, commands, and agents
-/// Called for each project detected with .opencode/ directory
-pub fn scan_opencode_project(db: &Database, project_path: &Path) -> Result<(usize, usize, usize)> {
-    let opencode_dir = project_path.join(".opencode");
-    if !opencode_dir.exists() {
-        return Ok((0, 0, 0));
-    }
-
-    let mut mcp_count = 0;
-    let mut command_count = 0;
-    let mut agent_count = 0;
-
-    // Get or create project
-    let project_name = project_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| project_path.to_string_lossy().to_string());
-
-    let project_id =
-        get_or_create_opencode_project(db, &project_name, &project_path.to_string_lossy())?;
-
-    // Scan opencode.json in project root for MCPs
-    let opencode_json = project_path.join("opencode.json");
-    if opencode_json.exists() {
-        if let Ok(mcps) = opencode_config::parse_opencode_mcps(&opencode_json) {
-            for mcp in mcps {
-                let mcp_type = match mcp.mcp_type.as_str() {
-                    "local" => "stdio",
-                    "remote" => "http",
-                    other => other,
-                };
-
-                let mcp_id = get_or_create_mcp(
-                    db,
-                    &mcp.name,
-                    mcp_type,
-                    mcp.command.as_deref(),
-                    mcp.args.as_ref(),
-                    mcp.url.as_deref(),
-                    mcp.headers.as_ref(),
-                    mcp.env.as_ref(),
-                    &project_path.to_string_lossy(),
-                )?;
-
-                assign_mcp_to_project(db, project_id, mcp_id, true)?;
-                mcp_count += 1;
-            }
-        }
-    }
-
-    // Scan .opencode/command/ for commands
-    let command_dir = opencode_dir.join("command");
-    if command_dir.exists() {
-        command_count = scan_opencode_project_commands(db, project_id, &command_dir)?;
-    }
-
-    // Scan .opencode/agent/ for agents
-    let agent_dir = opencode_dir.join("agent");
-    if agent_dir.exists() {
-        agent_count = scan_opencode_project_agents(db, project_id, &agent_dir)?;
-    }
-
-    Ok((mcp_count, command_count, agent_count))
-}
-
-/// Get or create an OpenCode project in the database
-fn get_or_create_opencode_project(db: &Database, name: &str, path: &str) -> Result<i64> {
-    let normalized = normalize_path(path);
-
-    // Try to find existing project by path
-    let existing_id: Option<i64> = db
-        .conn()
-        .query_row(
-            "SELECT id FROM projects WHERE path = ? OR path = ?",
-            params![path, normalized],
-            |row| row.get(0),
-        )
-        .ok();
-
-    if let Some(id) = existing_id {
-        // Update editor_type to opencode if it exists
-        let _ = db.conn().execute(
-            "UPDATE projects SET editor_type = 'opencode' WHERE id = ?",
-            [id],
-        );
-        return Ok(id);
-    }
-
-    // Create new project with editor_type = 'opencode'
-    db.conn().execute(
-        "INSERT INTO projects (name, path, has_mcp_file, has_settings_file, editor_type) VALUES (?, ?, 0, 0, 'opencode')",
-        params![name, normalized],
-    )?;
-
-    Ok(db.conn().last_insert_rowid())
-}
-
-/// Scan OpenCode project commands and assign to project
-fn scan_opencode_project_commands(
-    db: &Database,
-    project_id: i64,
-    command_dir: &Path,
-) -> Result<usize> {
-    let mut count = 0;
-
-    for entry in std::fs::read_dir(command_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-
-        if path.extension().map(|e| e == "md").unwrap_or(false) {
-            if let Some(skill) = parse_skill_file(&path) {
-                let (skill_id, _) = get_or_create_skill(db, &skill)?;
-                assign_skill_to_project(db, project_id, skill_id)?;
-                count += 1;
-            }
-        }
-    }
-
-    Ok(count)
-}
-
-/// Scan OpenCode project agents and assign to project
-fn scan_opencode_project_agents(db: &Database, project_id: i64, agent_dir: &Path) -> Result<usize> {
-    let mut count = 0;
-
-    for entry in std::fs::read_dir(agent_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-
-        if path.extension().map(|e| e == "md").unwrap_or(false) {
-            if let Some(agent) = parse_agent_file(&path) {
-                let agent_id = get_or_create_agent(db, &agent)?;
-                assign_agent_to_project(db, project_id, agent_id)?;
-                count += 1;
             }
         }
     }

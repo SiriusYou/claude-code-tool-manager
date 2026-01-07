@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Mcp } from '$lib/types';
-	import { Plug, Globe, Server, MoreVertical, Edit, Copy, Trash2, Play, Lock, Radio } from 'lucide-svelte';
+	import { Plug, Globe, Server, MoreVertical, Edit, Copy, Trash2, Play, Lock, Radio, Heart } from 'lucide-svelte';
 
 	type Props = {
 		mcp: Mcp;
@@ -12,6 +12,7 @@
 		onDuplicate?: (mcp: Mcp) => void;
 		onTest?: (mcp: Mcp) => void;
 		onGatewayToggle?: (mcp: Mcp, enabled: boolean) => void;
+		onFavoriteToggle?: (mcp: Mcp, favorite: boolean) => void;
 	};
 
 	let {
@@ -23,7 +24,8 @@
 		onDelete,
 		onDuplicate,
 		onTest,
-		onGatewayToggle
+		onGatewayToggle,
+		onFavoriteToggle
 	}: Props = $props();
 
 	let showMenu = $state(false);
@@ -81,7 +83,10 @@
 						System
 					</span>
 				{:else if mcp.source === 'auto-detected'}
-					<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+					<span
+						class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300 cursor-help"
+						title={mcp.sourcePath ? `Source: ${mcp.sourcePath}` : 'Auto-detected from filesystem'}
+					>
 						Auto
 					</span>
 				{/if}
@@ -137,14 +142,29 @@
 		</div>
 
 		{#if showActions}
-			<div class="relative">
-				<button
-					bind:this={menuButton}
-					onclick={toggleMenu}
-					class="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-				>
-					<MoreVertical class="w-4 h-4" />
-				</button>
+			<div class="flex items-center gap-1">
+				{#if onFavoriteToggle}
+					<button
+						onclick={(e) => {
+							e.stopPropagation();
+							onFavoriteToggle(mcp, !mcp.isFavorite);
+						}}
+						class="p-1.5 rounded-lg transition-colors {mcp.isFavorite
+							? 'text-rose-500 hover:text-rose-600'
+							: 'text-gray-300 hover:text-rose-400 dark:text-gray-600 dark:hover:text-rose-400'}"
+						title={mcp.isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+					>
+						<Heart class="w-4 h-4" fill={mcp.isFavorite ? 'currentColor' : 'none'} />
+					</button>
+				{/if}
+				<div class="relative">
+					<button
+						bind:this={menuButton}
+						onclick={toggleMenu}
+						class="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+					>
+						<MoreVertical class="w-4 h-4" />
+					</button>
 
 				{#if showMenu}
 					<div
@@ -202,6 +222,7 @@
 						{/if}
 					</div>
 				{/if}
+				</div>
 			</div>
 		{/if}
 	</div>

@@ -31,8 +31,9 @@ fn row_to_mcp(row: &rusqlite::Row, offset: usize) -> rusqlite::Result<Mcp> {
         source: row.get(offset + 11)?,
         source_path: row.get(offset + 12)?,
         is_enabled_global: row.get::<_, i32>(offset + 13)? != 0,
-        created_at: row.get(offset + 14)?,
-        updated_at: row.get(offset + 15)?,
+        is_favorite: row.get::<_, i32>(offset + 14)? != 0,
+        created_at: row.get(offset + 15)?,
+        updated_at: row.get(offset + 16)?,
     })
 }
 
@@ -48,7 +49,7 @@ pub fn get_all_projects(db: State<'_, Arc<Mutex<Database>>>) -> Result<Vec<Proje
     let mut stmt = db
         .conn()
         .prepare(
-            "SELECT id, name, path, has_mcp_file, has_settings_file, last_scanned_at, editor_type, created_at, updated_at
+            "SELECT id, name, path, has_mcp_file, has_settings_file, last_scanned_at, editor_type, is_favorite, created_at, updated_at
              FROM projects ORDER BY name",
         )
         .map_err(|e| e.to_string())?;
@@ -65,8 +66,9 @@ pub fn get_all_projects(db: State<'_, Arc<Mutex<Database>>>) -> Result<Vec<Proje
                 editor_type: row
                     .get::<_, Option<String>>(6)?
                     .unwrap_or_else(|| "claude_code".to_string()),
-                created_at: row.get(7)?,
-                updated_at: row.get(8)?,
+                is_favorite: row.get::<_, i32>(7).unwrap_or(0) != 0,
+                created_at: row.get(8)?,
+                updated_at: row.get(9)?,
                 assigned_mcps: vec![],
             })
         })
@@ -82,7 +84,7 @@ pub fn get_all_projects(db: State<'_, Arc<Mutex<Database>>>) -> Result<Vec<Proje
             .prepare(
                 "SELECT pm.id, pm.mcp_id, pm.is_enabled, pm.env_overrides, pm.display_order,
                         m.id, m.name, m.description, m.type, m.command, m.args, m.url, m.headers, m.env,
-                        m.icon, m.tags, m.source, m.source_path, m.is_enabled_global, m.created_at, m.updated_at
+                        m.icon, m.tags, m.source, m.source_path, m.is_enabled_global, m.is_favorite, m.created_at, m.updated_at
                  FROM project_mcps pm
                  JOIN mcps m ON pm.mcp_id = m.id
                  WHERE pm.project_id = ?
@@ -162,6 +164,7 @@ pub fn add_project(
         has_settings_file,
         last_scanned_at: None,
         editor_type: "claude_code".to_string(),
+        is_favorite: false,
         created_at: chrono::Utc::now().to_rfc3339(),
         updated_at: chrono::Utc::now().to_rfc3339(),
         assigned_mcps: vec![],
@@ -263,19 +266,20 @@ pub fn sync_project_config(
     db: State<'_, Arc<Mutex<Database>>>,
     project_id: i64,
 ) -> Result<(), String> {
+    use crate::commands::settings::get_enabled_editors_from_db;
     use crate::services::opencode_config;
     use crate::utils::paths::get_claude_paths;
 
     info!("[Projects] Syncing config for project id={}", project_id);
     let db = db.lock().map_err(|e| e.to_string())?;
 
-    // Get project path and editor_type
-    let (path, editor_type): (String, String) = db
+    // Get project path
+    let path: String = db
         .conn()
         .query_row(
-            "SELECT path, COALESCE(editor_type, 'claude_code') FROM projects WHERE id = ?",
+            "SELECT path FROM projects WHERE id = ?",
             [project_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
 
@@ -319,64 +323,68 @@ pub fn sync_project_config(
 
     let project_path = PathBuf::from(&path);
 
-    // Route to the correct config writer based on editor_type
-    match editor_type.as_str() {
-        "opencode" => {
-            // Write to OpenCode format (opencode.json in project root)
-            let enabled_mcps: Vec<_> = mcps_with_enabled
-                .iter()
-                .filter(|(_, _, _, _, _, _, _, enabled)| *enabled)
-                .map(|(n, t, cmd, args, url, headers, env, _)| {
-                    (
-                        n.clone(),
-                        t.clone(),
-                        cmd.clone(),
-                        args.clone(),
-                        url.clone(),
-                        headers.clone(),
-                        env.clone(),
-                    )
-                })
-                .collect();
+    // Write to all enabled editors
+    let enabled_editors = get_enabled_editors_from_db(&db);
+    for editor in &enabled_editors {
+        match editor.as_str() {
+            "claude_code" => {
+                // Claude Code: Write to claude.json (includes disabled state)
+                let paths = get_claude_paths().map_err(|e| e.to_string())?;
+                config_writer::write_project_to_claude_json(&paths, &path, &mcps_with_enabled)
+                    .map_err(|e| e.to_string())?;
 
-            opencode_config::write_opencode_project_config(&project_path, &enabled_mcps)
-                .map_err(|e| e.to_string())?;
+                // Also write .mcp.json for enabled MCPs only (legacy support)
+                let enabled_mcps: Vec<_> = mcps_with_enabled
+                    .iter()
+                    .filter(|(_, _, _, _, _, _, _, enabled)| *enabled)
+                    .map(|(n, t, cmd, args, url, headers, env, _)| {
+                        (
+                            n.clone(),
+                            t.clone(),
+                            cmd.clone(),
+                            args.clone(),
+                            url.clone(),
+                            headers.clone(),
+                            env.clone(),
+                        )
+                    })
+                    .collect();
 
-            info!(
-                "[Projects] Wrote OpenCode config for project {}",
-                project_id
-            );
-        }
-        _ => {
-            // Claude Code: Write to claude.json (includes disabled state)
-            let paths = get_claude_paths().map_err(|e| e.to_string())?;
-            config_writer::write_project_to_claude_json(&paths, &path, &mcps_with_enabled)
-                .map_err(|e| e.to_string())?;
+                config_writer::write_project_config(&project_path, &enabled_mcps)
+                    .map_err(|e| e.to_string())?;
 
-            // Also write .mcp.json for enabled MCPs only (legacy support)
-            let enabled_mcps: Vec<_> = mcps_with_enabled
-                .iter()
-                .filter(|(_, _, _, _, _, _, _, enabled)| *enabled)
-                .map(|(n, t, cmd, args, url, headers, env, _)| {
-                    (
-                        n.clone(),
-                        t.clone(),
-                        cmd.clone(),
-                        args.clone(),
-                        url.clone(),
-                        headers.clone(),
-                        env.clone(),
-                    )
-                })
-                .collect();
+                info!(
+                    "[Projects] Wrote Claude Code config for project {}",
+                    project_id
+                );
+            }
+            "opencode" => {
+                // Write to OpenCode format (opencode.json in project root)
+                let enabled_mcps: Vec<_> = mcps_with_enabled
+                    .iter()
+                    .filter(|(_, _, _, _, _, _, _, enabled)| *enabled)
+                    .map(|(n, t, cmd, args, url, headers, env, _)| {
+                        (
+                            n.clone(),
+                            t.clone(),
+                            cmd.clone(),
+                            args.clone(),
+                            url.clone(),
+                            headers.clone(),
+                            env.clone(),
+                        )
+                    })
+                    .collect();
 
-            config_writer::write_project_config(&project_path, &enabled_mcps)
-                .map_err(|e| e.to_string())?;
+                opencode_config::write_opencode_project_config(&project_path, &enabled_mcps)
+                    .map_err(|e| e.to_string())?;
 
-            info!(
-                "[Projects] Wrote Claude Code config for project {}",
-                project_id
-            );
+                info!(
+                    "[Projects] Wrote OpenCode config for project {}",
+                    project_id
+                );
+            }
+            _ => {}
         }
     }
 
@@ -396,6 +404,7 @@ pub fn sync_project_config(
 // ============================================================================
 
 /// Create a project directly in the database (for testing)
+#[cfg(test)]
 pub fn create_project_in_db(
     db: &Database,
     project: &CreateProjectRequest,
@@ -413,10 +422,11 @@ pub fn create_project_in_db(
 }
 
 /// Get a project by ID directly from the database (for testing)
+#[cfg(test)]
 pub fn get_project_by_id(db: &Database, id: i64) -> Result<Project, String> {
     db.conn()
         .query_row(
-            "SELECT id, name, path, has_mcp_file, has_settings_file, last_scanned_at, editor_type, created_at, updated_at
+            "SELECT id, name, path, has_mcp_file, has_settings_file, last_scanned_at, editor_type, is_favorite, created_at, updated_at
              FROM projects WHERE id = ?",
             [id],
             |row| {
@@ -428,8 +438,9 @@ pub fn get_project_by_id(db: &Database, id: i64) -> Result<Project, String> {
                     has_settings_file: row.get::<_, i32>(4)? != 0,
                     last_scanned_at: row.get(5)?,
                     editor_type: row.get::<_, Option<String>>(6)?.unwrap_or_else(|| "claude_code".to_string()),
-                    created_at: row.get(7)?,
-                    updated_at: row.get(8)?,
+                    is_favorite: row.get::<_, i32>(7).unwrap_or(0) != 0,
+                    created_at: row.get(8)?,
+                    updated_at: row.get(9)?,
                     assigned_mcps: vec![],
                 })
             },
@@ -438,10 +449,11 @@ pub fn get_project_by_id(db: &Database, id: i64) -> Result<Project, String> {
 }
 
 /// Get a project by path directly from the database (for testing)
+#[cfg(test)]
 pub fn get_project_by_path(db: &Database, path: &str) -> Result<Project, String> {
     db.conn()
         .query_row(
-            "SELECT id, name, path, has_mcp_file, has_settings_file, last_scanned_at, editor_type, created_at, updated_at
+            "SELECT id, name, path, has_mcp_file, has_settings_file, last_scanned_at, editor_type, is_favorite, created_at, updated_at
              FROM projects WHERE path = ?",
             [path],
             |row| {
@@ -453,8 +465,9 @@ pub fn get_project_by_path(db: &Database, path: &str) -> Result<Project, String>
                     has_settings_file: row.get::<_, i32>(4)? != 0,
                     last_scanned_at: row.get(5)?,
                     editor_type: row.get::<_, Option<String>>(6)?.unwrap_or_else(|| "claude_code".to_string()),
-                    created_at: row.get(7)?,
-                    updated_at: row.get(8)?,
+                    is_favorite: row.get::<_, i32>(7).unwrap_or(0) != 0,
+                    created_at: row.get(8)?,
+                    updated_at: row.get(9)?,
                     assigned_mcps: vec![],
                 })
             },
@@ -463,11 +476,12 @@ pub fn get_project_by_path(db: &Database, path: &str) -> Result<Project, String>
 }
 
 /// Get all projects directly from the database (for testing)
+#[cfg(test)]
 pub fn get_all_projects_from_db(db: &Database) -> Result<Vec<Project>, String> {
     let mut stmt = db
         .conn()
         .prepare(
-            "SELECT id, name, path, has_mcp_file, has_settings_file, last_scanned_at, editor_type, created_at, updated_at
+            "SELECT id, name, path, has_mcp_file, has_settings_file, last_scanned_at, editor_type, is_favorite, created_at, updated_at
              FROM projects ORDER BY name",
         )
         .map_err(|e| e.to_string())?;
@@ -484,8 +498,9 @@ pub fn get_all_projects_from_db(db: &Database) -> Result<Vec<Project>, String> {
                 editor_type: row
                     .get::<_, Option<String>>(6)?
                     .unwrap_or_else(|| "claude_code".to_string()),
-                created_at: row.get(7)?,
-                updated_at: row.get(8)?,
+                is_favorite: row.get::<_, i32>(7).unwrap_or(0) != 0,
+                created_at: row.get(8)?,
+                updated_at: row.get(9)?,
                 assigned_mcps: vec![],
             })
         })
@@ -497,6 +512,7 @@ pub fn get_all_projects_from_db(db: &Database) -> Result<Vec<Project>, String> {
 }
 
 /// Delete a project directly from the database (for testing)
+#[cfg(test)]
 pub fn delete_project_from_db(db: &Database, id: i64) -> Result<(), String> {
     db.conn()
         .execute("DELETE FROM projects WHERE id = ?", [id])
@@ -504,7 +520,24 @@ pub fn delete_project_from_db(db: &Database, id: i64) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+pub fn toggle_project_favorite(
+    db: State<'_, Arc<Mutex<Database>>>,
+    id: i64,
+    favorite: bool,
+) -> Result<(), String> {
+    let db = db.lock().map_err(|e| e.to_string())?;
+    db.conn()
+        .execute(
+            "UPDATE projects SET is_favorite = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            params![favorite as i32, id],
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Assign an MCP to a project directly in the database (for testing)
+#[cfg(test)]
 pub fn assign_mcp_to_project_in_db(
     db: &Database,
     project_id: i64,
@@ -530,6 +563,7 @@ pub fn assign_mcp_to_project_in_db(
 }
 
 /// Remove an MCP from a project directly in the database (for testing)
+#[cfg(test)]
 pub fn remove_mcp_from_project_in_db(
     db: &Database,
     project_id: i64,
@@ -545,6 +579,7 @@ pub fn remove_mcp_from_project_in_db(
 }
 
 /// Toggle a project MCP directly in the database (for testing)
+#[cfg(test)]
 pub fn toggle_project_mcp_in_db(
     db: &Database,
     assignment_id: i64,
@@ -560,13 +595,14 @@ pub fn toggle_project_mcp_in_db(
 }
 
 /// Get project MCP assignments directly from the database (for testing)
+#[cfg(test)]
 pub fn get_project_mcps_from_db(db: &Database, project_id: i64) -> Result<Vec<ProjectMcp>, String> {
     let mut stmt = db
         .conn()
         .prepare(
             "SELECT pm.id, pm.mcp_id, pm.is_enabled, pm.env_overrides, pm.display_order,
                     m.id, m.name, m.description, m.type, m.command, m.args, m.url, m.headers, m.env,
-                    m.icon, m.tags, m.source, m.source_path, m.is_enabled_global, m.created_at, m.updated_at
+                    m.icon, m.tags, m.source, m.source_path, m.is_enabled_global, m.is_favorite, m.created_at, m.updated_at
              FROM project_mcps pm
              JOIN mcps m ON pm.mcp_id = m.id
              WHERE pm.project_id = ?

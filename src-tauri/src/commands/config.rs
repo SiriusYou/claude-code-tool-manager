@@ -29,8 +29,9 @@ fn row_to_mcp(row: &rusqlite::Row, offset: usize) -> rusqlite::Result<Mcp> {
         source: row.get(offset + 11)?,
         source_path: row.get(offset + 12)?,
         is_enabled_global: row.get::<_, i32>(offset + 13)? != 0,
-        created_at: row.get(offset + 14)?,
-        updated_at: row.get(offset + 15)?,
+        is_favorite: row.get::<_, i32>(offset + 14)? != 0,
+        created_at: row.get(offset + 15)?,
+        updated_at: row.get(offset + 16)?,
     })
 }
 
@@ -43,7 +44,7 @@ pub fn get_global_mcps(db: State<'_, Arc<Mutex<Database>>>) -> Result<Vec<Global
         .prepare(
             "SELECT gm.id, gm.mcp_id, gm.is_enabled, gm.env_overrides,
                     m.id, m.name, m.description, m.type, m.command, m.args, m.url, m.headers, m.env,
-                    m.icon, m.tags, m.source, m.source_path, m.is_enabled_global, m.created_at, m.updated_at
+                    m.icon, m.tags, m.source, m.source_path, m.is_enabled_global, m.is_favorite, m.created_at, m.updated_at
              FROM global_mcps gm
              JOIN mcps m ON gm.mcp_id = m.id
              ORDER BY gm.display_order",
@@ -230,6 +231,7 @@ pub fn backup_configs() -> Result<(), String> {
 // ============================================================================
 
 /// Add a global MCP directly in the database (for testing)
+#[cfg(test)]
 pub fn add_global_mcp_in_db(db: &Database, mcp_id: i64) -> Result<(), String> {
     let order: i32 = db
         .conn()
@@ -251,6 +253,7 @@ pub fn add_global_mcp_in_db(db: &Database, mcp_id: i64) -> Result<(), String> {
 }
 
 /// Remove a global MCP directly from the database (for testing)
+#[cfg(test)]
 pub fn remove_global_mcp_from_db(db: &Database, mcp_id: i64) -> Result<(), String> {
     db.conn()
         .execute("DELETE FROM global_mcps WHERE mcp_id = ?", [mcp_id])
@@ -259,6 +262,7 @@ pub fn remove_global_mcp_from_db(db: &Database, mcp_id: i64) -> Result<(), Strin
 }
 
 /// Toggle a global MCP directly in the database (for testing)
+#[cfg(test)]
 pub fn toggle_global_mcp_in_db(db: &Database, id: i64, enabled: bool) -> Result<(), String> {
     db.conn()
         .execute(
@@ -270,13 +274,14 @@ pub fn toggle_global_mcp_in_db(db: &Database, id: i64, enabled: bool) -> Result<
 }
 
 /// Get all global MCPs directly from the database (for testing)
+#[cfg(test)]
 pub fn get_global_mcps_from_db(db: &Database) -> Result<Vec<GlobalMcp>, String> {
     let mut stmt = db
         .conn()
         .prepare(
             "SELECT gm.id, gm.mcp_id, gm.is_enabled, gm.env_overrides,
                     m.id, m.name, m.description, m.type, m.command, m.args, m.url, m.headers, m.env,
-                    m.icon, m.tags, m.source, m.source_path, m.is_enabled_global, m.created_at, m.updated_at
+                    m.icon, m.tags, m.source, m.source_path, m.is_enabled_global, m.is_favorite, m.created_at, m.updated_at
              FROM global_mcps gm
              JOIN mcps m ON gm.mcp_id = m.id
              ORDER BY gm.display_order",

@@ -22,6 +22,7 @@ export interface Mcp {
 	source: McpSource;
 	sourcePath: string | null;
 	isEnabledGlobal: boolean;
+	isFavorite: boolean;
 
 	createdAt: string;
 	updatedAt: string;

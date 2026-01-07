@@ -112,6 +112,32 @@ pub fn delete_project_command(project_path: &Path, command: &Command) -> Result<
 // OpenCode Support
 // ============================================================================
 // OpenCode uses a slightly different structure: .opencode/command/{name}.md
+// OpenCode frontmatter format: description, agent, model, subtask
+
+/// Generate markdown content for an OpenCode command (.opencode/command/name.md)
+/// OpenCode uses different frontmatter keys than Claude Code
+pub(crate) fn generate_command_markdown_opencode(command: &Command) -> String {
+    let mut frontmatter = String::from("---\n");
+
+    if let Some(ref desc) = command.description {
+        if !desc.is_empty() {
+            frontmatter.push_str(&format!("description: {}\n", desc));
+        }
+    }
+
+    // OpenCode uses 'model' same as Claude Code
+    if let Some(ref model) = command.model {
+        if !model.is_empty() {
+            frontmatter.push_str(&format!("model: {}\n", model));
+        }
+    }
+
+    // Note: OpenCode also supports 'agent' and 'subtask' but we don't have those fields
+    // in our Command struct yet. They can be added later if needed.
+
+    frontmatter.push_str("---\n\n");
+    format!("{}{}", frontmatter, command.content)
+}
 
 /// Write a command to OpenCode's format
 /// Commands go to {base_path}/command/{name}.md
@@ -120,7 +146,7 @@ pub fn write_command_file_opencode(base_path: &Path, command: &Command) -> Resul
     std::fs::create_dir_all(&command_dir)?;
 
     let file_path = command_dir.join(format!("{}.md", command.name));
-    let content = generate_command_markdown(command);
+    let content = generate_command_markdown_opencode(command);
     std::fs::write(file_path, content)?;
 
     Ok(())
@@ -183,6 +209,8 @@ mod tests {
             model: Some("sonnet".to_string()),
             tags: None,
             source: "manual".to_string(),
+            source_path: None,
+            is_favorite: false,
             created_at: "2024-01-01".to_string(),
             updated_at: "2024-01-01".to_string(),
         }
@@ -199,6 +227,8 @@ mod tests {
             model: None,
             tags: None,
             source: "manual".to_string(),
+            source_path: None,
+            is_favorite: false,
             created_at: "2024-01-01".to_string(),
             updated_at: "2024-01-01".to_string(),
         }
@@ -332,5 +362,38 @@ mod tests {
 
         delete_command_file_opencode(temp_dir.path(), &command).unwrap();
         assert!(!file_path.exists());
+    }
+
+    #[test]
+    fn test_generate_command_markdown_opencode() {
+        let command = sample_command();
+        let md = generate_command_markdown_opencode(&command);
+
+        // OpenCode format should have description and model
+        assert!(md.starts_with("---\n"));
+        assert!(md.contains("description: A test slash command\n"));
+        assert!(md.contains("model: sonnet\n"));
+        assert!(md.contains("---\n\nExecute this task for the user."));
+
+        // OpenCode should NOT have Claude-specific fields
+        assert!(!md.contains("allowed-tools:"));
+        assert!(!md.contains("argument-hint:"));
+    }
+
+    #[test]
+    fn test_opencode_command_content_uses_correct_format() {
+        let temp_dir = TempDir::new().unwrap();
+        let command = sample_command();
+
+        write_command_file_opencode(temp_dir.path(), &command).unwrap();
+
+        let file_path = temp_dir.path().join("command").join("test-command.md");
+        let content = std::fs::read_to_string(file_path).unwrap();
+
+        // Verify OpenCode format
+        assert!(content.contains("description: A test slash command"));
+        assert!(content.contains("model: sonnet"));
+        assert!(!content.contains("allowed-tools:"));
+        assert!(!content.contains("argument-hint:"));
     }
 }

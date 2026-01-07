@@ -58,22 +58,9 @@ pub struct GatewayServerState {
     shutdown_tx: Arc<Mutex<Option<oneshot::Sender<()>>>>,
     port: Arc<Mutex<u16>>,
     pub backend_manager: Arc<tokio::sync::Mutex<GatewayBackendManager>>,
-    db: Arc<Mutex<Database>>,
 }
 
 impl GatewayServerState {
-    pub fn new(db: Arc<Mutex<Database>>) -> Self {
-        let backend_manager = GatewayBackendManager::new(db.clone());
-        Self {
-            is_running: Arc::new(AtomicBool::new(false)),
-            config: Arc::new(Mutex::new(GatewayServerConfig::default())),
-            shutdown_tx: Arc::new(Mutex::new(None)),
-            port: Arc::new(Mutex::new(DEFAULT_GATEWAY_PORT)),
-            backend_manager: Arc::new(tokio::sync::Mutex::new(backend_manager)),
-            db,
-        }
-    }
-
     pub fn with_config(config: GatewayServerConfig, db: Arc<Mutex<Database>>) -> Self {
         let port = config.port;
         let backend_manager = GatewayBackendManager::new(db.clone());
@@ -83,7 +70,6 @@ impl GatewayServerState {
             shutdown_tx: Arc::new(Mutex::new(None)),
             port: Arc::new(Mutex::new(port)),
             backend_manager: Arc::new(tokio::sync::Mutex::new(backend_manager)),
-            db,
         }
     }
 
@@ -105,18 +91,6 @@ impl GatewayServerState {
     /// Get the MCP endpoint URL
     pub fn get_mcp_endpoint(&self) -> String {
         format!("{}/mcp", self.get_url())
-    }
-
-    /// Get current status (synchronous version for basic info)
-    pub fn get_status_sync(&self) -> GatewayServerStatus {
-        GatewayServerStatus {
-            is_running: self.is_running(),
-            port: self.get_port(),
-            url: self.get_url(),
-            mcp_endpoint: self.get_mcp_endpoint(),
-            connected_backends: Vec::new(),
-            total_tools: 0,
-        }
     }
 
     /// Get current status with backend info (requires async)

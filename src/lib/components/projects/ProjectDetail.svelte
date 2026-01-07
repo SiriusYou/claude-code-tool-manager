@@ -1,7 +1,7 @@
 <script lang="ts">
-	import type { Project, Mcp, Skill, SubAgent, ProjectSkill, ProjectSubAgent } from '$lib/types';
-	import { mcpLibrary, projectsStore, notifications, skillLibrary, subagentLibrary } from '$lib/stores';
-	import { X, Plus, Minus, FolderOpen, Plug, Globe, Server, Sparkles, Bot, ChevronDown } from 'lucide-svelte';
+	import type { Project, Mcp, Skill, SubAgent, Command, ProjectSkill, ProjectSubAgent, ProjectCommand } from '$lib/types';
+	import { mcpLibrary, projectsStore, notifications, skillLibrary, subagentLibrary, commandLibrary } from '$lib/stores';
+	import { X, Plus, Minus, FolderOpen, Plug, Globe, Server, Sparkles, Bot, ChevronDown, Terminal } from 'lucide-svelte';
 	import { invoke } from '@tauri-apps/api/core';
 
 	type Props = {
@@ -15,7 +15,7 @@
 	let updatingEditor = $state(false);
 
 	// Tab state
-	type Tab = 'mcps' | 'skills' | 'agents';
+	type Tab = 'mcps' | 'skills' | 'agents' | 'commands';
 	let activeTab = $state<Tab>('mcps');
 
 	const typeIcons = {
@@ -57,7 +57,14 @@
 		subagentLibrary.subagents.filter((agent) => !assignedSubAgentIds.includes(agent.id))
 	);
 
-	// Load project skills and subagents
+	// Commands state
+	let projectCommands = $state<ProjectCommand[]>([]);
+	let assignedCommandIds = $derived(projectCommands.map((pc) => pc.commandId));
+	let availableCommands = $derived(
+		commandLibrary.commands.filter((cmd) => !assignedCommandIds.includes(cmd.id))
+	);
+
+	// Load project skills, subagents, and commands
 	$effect(() => {
 		loadProjectData();
 	});
@@ -66,6 +73,7 @@
 		try {
 			projectSkills = await skillLibrary.getProjectSkills(project.id);
 			projectSubAgents = await subagentLibrary.getProjectSubAgents(project.id);
+			projectCommands = await commandLibrary.getProjectCommands(project.id);
 		} catch (err) {
 			console.error('Failed to load project data:', err);
 		}
@@ -175,6 +183,43 @@
 			await loadProjectData();
 		} catch (err) {
 			notifications.error('Failed to toggle agent');
+			console.error(err);
+		}
+	}
+
+	// Command handlers
+	async function handleAddCommand(command: Command) {
+		try {
+			await commandLibrary.assignToProject(project.id, command.id);
+			await projectsStore.syncProjectConfig(project.id);
+			await loadProjectData();
+			notifications.success(`Added ${command.name} to ${project.name}`);
+		} catch (err) {
+			notifications.error('Failed to add command');
+			console.error(err);
+		}
+	}
+
+	async function handleRemoveCommand(commandId: number) {
+		try {
+			const command = commandLibrary.getCommandById(commandId);
+			await commandLibrary.removeFromProject(project.id, commandId);
+			await projectsStore.syncProjectConfig(project.id);
+			await loadProjectData();
+			notifications.success(`Removed ${command?.name || 'Command'} from ${project.name}`);
+		} catch (err) {
+			notifications.error('Failed to remove command');
+			console.error(err);
+		}
+	}
+
+	async function handleToggleCommand(assignmentId: number, enabled: boolean) {
+		try {
+			await commandLibrary.toggleProjectCommand(assignmentId, enabled);
+			await projectsStore.syncProjectConfig(project.id);
+			await loadProjectData();
+		} catch (err) {
+			notifications.error('Failed to toggle command');
 			console.error(err);
 		}
 	}
@@ -296,6 +341,13 @@
 			>
 				<Bot class="w-4 h-4" />
 				Agents ({projectSubAgents.length})
+			</button>
+			<button
+				onclick={() => activeTab = 'commands'}
+				class="flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors {activeTab === 'commands' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}"
+			>
+				<Terminal class="w-4 h-4" />
+				Commands ({projectCommands.length})
 			</button>
 		</div>
 
@@ -573,6 +625,99 @@
 					{:else}
 						<div class="text-center py-6 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
 							<p class="text-gray-500 dark:text-gray-400">All agents are assigned</p>
+						</div>
+					{/if}
+				</div>
+			{:else if activeTab === 'commands'}
+				<!-- Assigned Commands -->
+				<div>
+					<h3 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+						Assigned Commands ({projectCommands.length})
+					</h3>
+					{#if projectCommands.length > 0}
+						<div class="space-y-2">
+							{#each projectCommands as assignment (assignment.id)}
+								{@const command = commandLibrary.getCommandById(assignment.commandId) ?? assignment.command}
+								<div class="flex items-center justify-between gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+									<div class="flex items-center gap-3 min-w-0 flex-1">
+										<div class="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-400 flex items-center justify-center flex-shrink-0">
+											<Terminal class="w-4 h-4" />
+										</div>
+										<div class="min-w-0">
+											<p class="font-medium text-gray-900 dark:text-white truncate {!assignment.isEnabled ? 'line-through opacity-50' : ''}">
+												/{command.name}
+											</p>
+											{#if command.description}
+												<p class="text-xs text-gray-500 dark:text-gray-400 truncate">{command.description}</p>
+											{/if}
+										</div>
+									</div>
+									<div class="flex items-center gap-3 flex-shrink-0">
+										<!-- Toggle -->
+										<button
+											onclick={() => handleToggleCommand(assignment.id, !assignment.isEnabled)}
+											class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none {assignment.isEnabled ? 'bg-primary-600' : 'bg-gray-300 dark:bg-gray-600'}"
+											role="switch"
+											aria-checked={assignment.isEnabled}
+											title={assignment.isEnabled ? 'Disable' : 'Enable'}
+										>
+											<span
+												class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out {assignment.isEnabled ? 'translate-x-4' : 'translate-x-0'}"
+											></span>
+										</button>
+										<!-- Remove -->
+										<button
+											onclick={() => handleRemoveCommand(assignment.commandId)}
+											class="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+											title="Remove from project"
+										>
+											<Minus class="w-4 h-4" />
+										</button>
+									</div>
+								</div>
+							{/each}
+						</div>
+					{:else}
+						<div class="text-center py-6 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
+							<p class="text-gray-500 dark:text-gray-400">No commands assigned yet</p>
+							<p class="text-sm text-gray-400 dark:text-gray-500 mt-1">Add commands from the library below</p>
+						</div>
+					{/if}
+				</div>
+
+				<!-- Available Commands -->
+				<div>
+					<h3 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+						Available Commands ({availableCommands.length})
+					</h3>
+					{#if availableCommands.length > 0}
+						<div class="space-y-2">
+							{#each availableCommands as command (command.id)}
+								<div class="flex items-center justify-between gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+									<div class="flex items-center gap-3 min-w-0 flex-1">
+										<div class="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-400 flex items-center justify-center flex-shrink-0">
+											<Terminal class="w-4 h-4" />
+										</div>
+										<div class="min-w-0">
+											<p class="font-medium text-gray-900 dark:text-white truncate">/{command.name}</p>
+											{#if command.description}
+												<p class="text-xs text-gray-500 dark:text-gray-400 truncate">{command.description}</p>
+											{/if}
+										</div>
+									</div>
+									<button
+										onclick={() => handleAddCommand(command)}
+										class="p-1.5 text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors flex-shrink-0"
+										title="Add to project"
+									>
+										<Plus class="w-4 h-4" />
+									</button>
+								</div>
+							{/each}
+						</div>
+					{:else}
+						<div class="text-center py-6 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
+							<p class="text-gray-500 dark:text-gray-400">All commands are assigned</p>
 						</div>
 					{/if}
 				</div>

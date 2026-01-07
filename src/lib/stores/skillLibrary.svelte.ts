@@ -21,7 +21,13 @@ class SkillLibraryState {
 			);
 		}
 
-		return result;
+		// Sort by favorites first, then by name
+		return [...result].sort((a, b) => {
+			if (a.isFavorite !== b.isFavorite) {
+				return a.isFavorite ? -1 : 1;
+			}
+			return a.name.localeCompare(b.name);
+		});
 	});
 
 	async load() {
@@ -95,6 +101,10 @@ class SkillLibraryState {
 
 	getSkillById(id: number): Skill | undefined {
 		return this.skills.find((s) => s.id === id);
+	}
+
+	updateSkill(skill: Skill): void {
+		this.skills = this.skills.map((s) => (s.id === skill.id ? skill : s));
 	}
 
 	setSearch(query: string) {

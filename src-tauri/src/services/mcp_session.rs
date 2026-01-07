@@ -136,24 +136,6 @@ impl McpSession {
         }
     }
 
-    fn resources_supported(&self) -> bool {
-        match self {
-            McpSession::Stdio(s) => s.client.resources_supported(),
-            McpSession::Http(s) => s.client.resources_supported(),
-            McpSession::Sse(s) => s.client.resources_supported(),
-            McpSession::StreamableHttp(s) => s.client.resources_supported(),
-        }
-    }
-
-    fn prompts_supported(&self) -> bool {
-        match self {
-            McpSession::Stdio(s) => s.client.prompts_supported(),
-            McpSession::Http(s) => s.client.prompts_supported(),
-            McpSession::Sse(s) => s.client.prompts_supported(),
-            McpSession::StreamableHttp(s) => s.client.prompts_supported(),
-        }
-    }
-
     fn call_tool(&mut self, name: &str, arguments: Value) -> Result<ToolCallResult> {
         match self {
             McpSession::Stdio(s) => {
@@ -493,11 +475,13 @@ impl McpSessionManager {
     }
 
     /// Get the number of active sessions
+    #[cfg(test)]
     pub fn session_count(&self) -> usize {
         self.sessions.lock().unwrap().len()
     }
 
     /// Check if a session exists
+    #[cfg(test)]
     pub fn has_session(&self, session_id: &str) -> bool {
         self.sessions.lock().unwrap().contains_key(session_id)
     }

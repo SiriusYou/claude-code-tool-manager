@@ -145,6 +145,7 @@ pub fn format_invoke_log(
 }
 
 /// Format a frontend log message (for testing)
+#[cfg(test)]
 pub fn format_frontend_log(
     level: &str,
     message: &str,

@@ -8,6 +8,8 @@ export interface Command {
 	model?: string;
 	tags?: string[];
 	source: string;
+	sourcePath?: string;
+	isFavorite: boolean;
 	createdAt: string;
 	updatedAt: string;
 }
