@@ -2,6 +2,7 @@ use crate::commands::settings::get_enabled_editors_from_db;
 use crate::db::models::{Command, CreateCommandRequest, GlobalCommand, ProjectCommand};
 use crate::db::schema::Database;
 use crate::services::command_writer;
+use log::warn;
 use regex::Regex;
 use rusqlite::params;
 use std::path::Path;
@@ -388,7 +389,10 @@ pub fn add_global_command(
             }
             "opencode" => command_writer::write_global_command_opencode(&command)
                 .map_err(|e| e.to_string())?,
-            _ => {}
+            unknown => warn!(
+                "[Commands] Unknown editor type '{}' for command '{}'. Skipping.",
+                unknown, command.name
+            ),
         }
     }
 
@@ -430,7 +434,10 @@ pub fn remove_global_command(
             }
             "opencode" => command_writer::delete_global_command_opencode(&command)
                 .map_err(|e| e.to_string())?,
-            _ => {}
+            unknown => warn!(
+                "[Commands] Unknown editor type '{}' for command '{}'. Skipping.",
+                unknown, command.name
+            ),
         }
     }
 
@@ -455,10 +462,11 @@ pub fn toggle_global_command(
 
     // Get the command details
     let query = format!(
-        "SELECT c.id, c.name, c.description, c.content, c.allowed_tools, c.argument_hint, c.model, c.tags, c.source, c.created_at, c.updated_at
+        "SELECT {}
          FROM global_commands gc
          JOIN commands c ON gc.command_id = c.id
-         WHERE gc.id = ?"
+         WHERE gc.id = ?",
+        COMMAND_SELECT_FIELDS.replace("id,", "c.id,")
     );
     let mut stmt = db_guard.conn().prepare(&query).map_err(|e| e.to_string())?;
 
@@ -476,7 +484,10 @@ pub fn toggle_global_command(
                 }
                 "opencode" => command_writer::write_global_command_opencode(&command)
                     .map_err(|e| e.to_string())?,
-                _ => {}
+                unknown => warn!(
+                    "[Commands] Unknown editor type '{}' for command '{}'. Skipping.",
+                    unknown, command.name
+                ),
             }
         } else {
             match editor.as_str() {
@@ -485,7 +496,10 @@ pub fn toggle_global_command(
                 }
                 "opencode" => command_writer::delete_global_command_opencode(&command)
                     .map_err(|e| e.to_string())?,
-                _ => {}
+                unknown => warn!(
+                    "[Commands] Unknown editor type '{}' for command '{}'. Skipping.",
+                    unknown, command.name
+                ),
             }
         }
     }
@@ -545,7 +559,10 @@ pub fn assign_command_to_project(
                 command_writer::write_project_command_opencode(Path::new(&project_path), &command)
                     .map_err(|e| e.to_string())?
             }
-            _ => {}
+            unknown => warn!(
+                "[Commands] Unknown editor type '{}' for command '{}'. Skipping.",
+                unknown, command.name
+            ),
         }
     }
 
@@ -600,7 +617,10 @@ pub fn remove_command_from_project(
                 command_writer::delete_project_command_opencode(Path::new(&project_path), &command)
                     .map_err(|e| e.to_string())?
             }
-            _ => {}
+            unknown => warn!(
+                "[Commands] Unknown editor type '{}' for command '{}'. Skipping.",
+                unknown, command.name
+            ),
         }
     }
 
@@ -653,7 +673,10 @@ pub fn toggle_project_command(
                     &command,
                 )
                 .map_err(|e| e.to_string())?,
-                _ => {}
+                unknown => warn!(
+                    "[Commands] Unknown editor type '{}' for command '{}'. Skipping.",
+                    unknown, command.name
+                ),
             }
         } else {
             match editor.as_str() {
@@ -666,7 +689,10 @@ pub fn toggle_project_command(
                     &command,
                 )
                 .map_err(|e| e.to_string())?,
-                _ => {}
+                unknown => warn!(
+                    "[Commands] Unknown editor type '{}' for command '{}'. Skipping.",
+                    unknown, command.name
+                ),
             }
         }
     }

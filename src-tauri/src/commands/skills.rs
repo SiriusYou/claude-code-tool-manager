@@ -4,6 +4,7 @@ use crate::db::models::{
 };
 use crate::db::schema::Database;
 use crate::services::skill_writer;
+use log::warn;
 use regex::Regex;
 use rusqlite::params;
 use std::path::Path;
@@ -382,7 +383,10 @@ pub fn add_global_skill(db: State<'_, Arc<Mutex<Database>>>, skill_id: i64) -> R
             "opencode" => {
                 skill_writer::write_global_skill_opencode(&skill).map_err(|e| e.to_string())?
             }
-            _ => {} // Unknown editor, skip
+            unknown => warn!(
+                "[Skills] Unknown editor type '{}' for skill '{}'. Skipping.",
+                unknown, skill.name
+            ),
         }
     }
 
@@ -419,7 +423,10 @@ pub fn remove_global_skill(
             "opencode" => {
                 skill_writer::delete_global_skill_opencode(&skill).map_err(|e| e.to_string())?
             }
-            _ => {}
+            unknown => warn!(
+                "[Skills] Unknown editor type '{}' for skill '{}'. Skipping.",
+                unknown, skill.name
+            ),
         }
     }
 
@@ -466,7 +473,10 @@ pub fn toggle_global_skill(
                 "opencode" => {
                     skill_writer::write_global_skill_opencode(&skill).map_err(|e| e.to_string())?
                 }
-                _ => {}
+                unknown => warn!(
+                    "[Skills] Unknown editor type '{}' for skill '{}'. Skipping.",
+                    unknown, skill.name
+                ),
             }
         } else {
             match editor.as_str() {
@@ -476,7 +486,10 @@ pub fn toggle_global_skill(
                 "opencode" => {
                     skill_writer::delete_global_skill_opencode(&skill).map_err(|e| e.to_string())?
                 }
-                _ => {}
+                unknown => warn!(
+                    "[Skills] Unknown editor type '{}' for skill '{}'. Skipping.",
+                    unknown, skill.name
+                ),
             }
         }
     }
@@ -528,7 +541,10 @@ pub fn assign_skill_to_project(
                 skill_writer::write_project_skill_opencode(Path::new(&project_path), &skill)
                     .map_err(|e| e.to_string())?
             }
-            _ => {}
+            unknown => warn!(
+                "[Skills] Unknown editor type '{}' for skill '{}'. Skipping.",
+                unknown, skill.name
+            ),
         }
     }
 
@@ -578,7 +594,10 @@ pub fn remove_skill_from_project(
                 skill_writer::delete_project_skill_opencode(Path::new(&project_path), &skill)
                     .map_err(|e| e.to_string())?
             }
-            _ => {}
+            unknown => warn!(
+                "[Skills] Unknown editor type '{}' for skill '{}'. Skipping.",
+                unknown, skill.name
+            ),
         }
     }
 
@@ -630,7 +649,10 @@ pub fn toggle_project_skill(
                     skill_writer::write_project_skill_opencode(Path::new(&project_path), &skill)
                         .map_err(|e| e.to_string())?
                 }
-                _ => {}
+                unknown => warn!(
+                    "[Skills] Unknown editor type '{}' for skill '{}'. Skipping.",
+                    unknown, skill.name
+                ),
             }
         } else {
             match editor.as_str() {
@@ -642,7 +664,10 @@ pub fn toggle_project_skill(
                     skill_writer::delete_project_skill_opencode(Path::new(&project_path), &skill)
                         .map_err(|e| e.to_string())?
                 }
-                _ => {}
+                unknown => warn!(
+                    "[Skills] Unknown editor type '{}' for skill '{}'. Skipping.",
+                    unknown, skill.name
+                ),
             }
         }
     }

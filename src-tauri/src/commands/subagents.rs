@@ -2,6 +2,7 @@ use crate::commands::settings::get_enabled_editors_from_db;
 use crate::db::models::{CreateSubAgentRequest, GlobalSubAgent, ProjectSubAgent, SubAgent};
 use crate::db::schema::Database;
 use crate::services::subagent_writer;
+use log::warn;
 use rusqlite::params;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -236,7 +237,10 @@ pub fn add_global_subagent(
             }
             "opencode" => subagent_writer::write_global_subagent_opencode(&subagent)
                 .map_err(|e| e.to_string())?,
-            _ => {}
+            unknown => warn!(
+                "[SubAgents] Unknown editor type '{}' for subagent '{}'. Skipping.",
+                unknown, subagent.name
+            ),
         }
     }
 
@@ -277,7 +281,10 @@ pub fn remove_global_subagent(
             }
             "opencode" => subagent_writer::delete_global_subagent_opencode(&name)
                 .map_err(|e| e.to_string())?,
-            _ => {}
+            unknown => warn!(
+                "[SubAgents] Unknown editor type '{}' for subagent '{}'. Skipping.",
+                unknown, name
+            ),
         }
     }
 
@@ -324,7 +331,10 @@ pub fn toggle_global_subagent(
                 }
                 "opencode" => subagent_writer::write_global_subagent_opencode(&subagent)
                     .map_err(|e| e.to_string())?,
-                _ => {}
+                unknown => warn!(
+                    "[SubAgents] Unknown editor type '{}' for subagent '{}'. Skipping.",
+                    unknown, subagent.name
+                ),
             }
         } else {
             match editor.as_str() {
@@ -332,7 +342,10 @@ pub fn toggle_global_subagent(
                     .map_err(|e| e.to_string())?,
                 "opencode" => subagent_writer::delete_global_subagent_opencode(&subagent.name)
                     .map_err(|e| e.to_string())?,
-                _ => {}
+                unknown => warn!(
+                    "[SubAgents] Unknown editor type '{}' for subagent '{}'. Skipping.",
+                    unknown, subagent.name
+                ),
             }
         }
     }
@@ -388,7 +401,10 @@ pub fn assign_subagent_to_project(
                 &subagent,
             )
             .map_err(|e| e.to_string())?,
-            _ => {}
+            unknown => warn!(
+                "[SubAgents] Unknown editor type '{}' for subagent '{}'. Skipping.",
+                unknown, subagent.name
+            ),
         }
     }
 
@@ -442,7 +458,10 @@ pub fn remove_subagent_from_project(
                 subagent_writer::delete_project_subagent_opencode(Path::new(&project_path), &name)
                     .map_err(|e| e.to_string())?
             }
-            _ => {}
+            unknown => warn!(
+                "[SubAgents] Unknown editor type '{}' for subagent '{}'. Skipping.",
+                unknown, name
+            ),
         }
     }
 
@@ -496,7 +515,10 @@ pub fn toggle_project_subagent(
                     &subagent,
                 )
                 .map_err(|e| e.to_string())?,
-                _ => {}
+                unknown => warn!(
+                    "[SubAgents] Unknown editor type '{}' for subagent '{}'. Skipping.",
+                    unknown, subagent.name
+                ),
             }
         } else {
             match editor.as_str() {
@@ -510,7 +532,10 @@ pub fn toggle_project_subagent(
                     &subagent.name,
                 )
                 .map_err(|e| e.to_string())?,
-                _ => {}
+                unknown => warn!(
+                    "[SubAgents] Unknown editor type '{}' for subagent '{}'. Skipping.",
+                    unknown, subagent.name
+                ),
             }
         }
     }
