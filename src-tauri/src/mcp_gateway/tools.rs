@@ -83,9 +83,7 @@ impl ServerHandler for GatewayServer {
                 then call call_mcp_tool to execute tools."
                     .to_string(),
             ),
-            capabilities: ServerCapabilities::builder()
-                .enable_tools()
-                .build(),
+            capabilities: ServerCapabilities::builder().enable_tools().build(),
             ..Default::default()
         }
     }
@@ -213,9 +211,9 @@ impl ServerHandler for GatewayServer {
                 "load_mcp_tools" => {
                     let args: LoadMcpToolsArgs = serde_json::from_value(Value::Object(arguments))
                         .map_err(|e| {
-                            log::error!("[Gateway] Invalid load_mcp_tools arguments: {}", e);
-                            ErrorData::invalid_params(format!("Invalid arguments: {}", e), None)
-                        })?;
+                        log::error!("[Gateway] Invalid load_mcp_tools arguments: {}", e);
+                        ErrorData::invalid_params(format!("Invalid arguments: {}", e), None)
+                    })?;
 
                     let mut backend_manager = self.backend_manager.lock().await;
                     match backend_manager.connect_backend_lazy(&args.mcp_name).await {

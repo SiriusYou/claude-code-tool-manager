@@ -199,7 +199,10 @@ impl GatewayBackendManager {
         // Check if already connected
         if let Some(backend) = self.backends.get(&mcp_meta.id) {
             if matches!(backend.status, BackendStatus::Connected) {
-                info!("[Gateway] MCP '{}' already connected, returning cached tools", mcp_name);
+                info!(
+                    "[Gateway] MCP '{}' already connected, returning cached tools",
+                    mcp_name
+                );
                 return Ok(backend.tools.clone());
             }
         }
