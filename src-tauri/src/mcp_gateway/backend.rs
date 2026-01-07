@@ -10,7 +10,6 @@ use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
 
 /// Status of a backend MCP connection
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -53,22 +52,18 @@ pub struct BackendConnection {
     pub client: Option<StdioMcpClient>,
     pub tools: Vec<McpTool>,
     pub server_info: Option<McpServerInfo>,
-    pub last_health_check: Instant,
     pub restart_count: u32,
-    pub auto_restart: bool,
 }
 
 impl BackendConnection {
-    pub fn new(mcp: Mcp, auto_restart: bool) -> Self {
+    pub fn new(mcp: Mcp) -> Self {
         Self {
             mcp,
             status: BackendStatus::Disconnected,
             client: None,
             tools: Vec::new(),
             server_info: None,
-            last_health_check: Instant::now(),
             restart_count: 0,
-            auto_restart,
         }
     }
 
@@ -123,11 +118,6 @@ impl GatewayBackendManager {
         format!("{}__{}", safe_mcp_name, tool_name)
     }
 
-    /// Parse a namespaced tool name back to (mcp_name_prefix, original_tool_name)
-    pub fn parse_namespaced_tool(namespaced: &str) -> Option<(&str, &str)> {
-        namespaced.split_once("__")
-    }
-
     /// Load gateway MCPs from database and connect to them
     pub async fn load_and_connect(&mut self) -> Result<()> {
         let gateway_mcps = {
@@ -166,7 +156,7 @@ impl GatewayBackendManager {
 
         info!("[Gateway] Adding backend: {} ({})", mcp_name, mcp_type);
 
-        let mut backend = BackendConnection::new(gateway_mcp.mcp.clone(), gateway_mcp.auto_restart);
+        let mut backend = BackendConnection::new(gateway_mcp.mcp.clone());
 
         // Only support stdio MCPs for now (HTTP/SSE would need different client handling)
         if mcp_type == "stdio" {
@@ -326,7 +316,7 @@ impl GatewayBackendManager {
     /// Shutdown all backend connections
     pub fn shutdown(&mut self) {
         info!("[Gateway] Shutting down all backend connections");
-        for (mcp_id, backend) in self.backends.iter_mut() {
+        for (_mcp_id, backend) in self.backends.iter_mut() {
             if let Some(client) = backend.client.take() {
                 info!("[Gateway] Closing connection to MCP {}", backend.mcp.name);
                 drop(client);
@@ -387,15 +377,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_parse_namespaced_tool() {
-        assert_eq!(
-            GatewayBackendManager::parse_namespaced_tool("filesystem__read_file"),
-            Some(("filesystem", "read_file"))
-        );
-        assert_eq!(
-            GatewayBackendManager::parse_namespaced_tool("invalid_tool"),
-            None
-        );
-    }
 }

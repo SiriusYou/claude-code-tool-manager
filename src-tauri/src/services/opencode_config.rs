@@ -1,4 +1,3 @@
-use crate::utils::opencode_paths::{get_opencode_paths, OpenCodePathsInternal};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -208,34 +207,6 @@ pub fn generate_opencode_mcp_config(mcps: &[McpTuple]) -> Value {
     json!({ "mcp": mcp_obj })
 }
 
-/// Write global OpenCode config
-pub fn write_opencode_global_config(mcps: &[McpTuple]) -> Result<()> {
-    let paths = get_opencode_paths()?;
-
-    // Ensure config directory exists
-    std::fs::create_dir_all(&paths.config_dir)?;
-
-    // Read existing config or create new
-    let mut config: Value = if paths.config_file.exists() {
-        let content = std::fs::read_to_string(&paths.config_file)?;
-        serde_json::from_str(&content).unwrap_or(json!({}))
-    } else {
-        json!({})
-    };
-
-    // Build MCP object
-    let mcp_config = generate_opencode_mcp_config(mcps);
-    if let Some(mcp) = mcp_config.get("mcp") {
-        config["mcp"] = mcp.clone();
-    }
-
-    // Write back
-    let content = serde_json::to_string_pretty(&config)?;
-    std::fs::write(&paths.config_file, content)?;
-
-    Ok(())
-}
-
 /// Write project-level OpenCode config
 pub fn write_opencode_project_config(project_path: &Path, mcps: &[McpTuple]) -> Result<()> {
     // OpenCode uses opencode.json in project root (not .opencode/opencode.json)
@@ -260,11 +231,6 @@ pub fn write_opencode_project_config(project_path: &Path, mcps: &[McpTuple]) -> 
     std::fs::write(&config_path, content)?;
 
     Ok(())
-}
-
-/// Get OpenCode paths (re-export for convenience)
-pub fn get_paths() -> Result<OpenCodePathsInternal> {
-    get_opencode_paths()
 }
 
 #[cfg(test)]

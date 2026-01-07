@@ -1,14 +1,8 @@
-use crate::db::models::{Skill, SkillFile};
+use crate::db::models::Skill;
 use crate::utils::opencode_paths::get_opencode_paths;
 use anyhow::Result;
 use directories::BaseDirs;
 use std::path::Path;
-
-/// Editor type for routing skill writes
-pub enum EditorType {
-    ClaudeCode,
-    OpenCode,
-}
 
 /// Generate markdown content for an agent skill (.claude/skills/name/SKILL.md)
 pub(crate) fn generate_skill_markdown(skill: &Skill) -> String {
@@ -91,94 +85,6 @@ pub fn delete_project_skill(project_path: &Path, skill: &Skill) -> Result<()> {
     delete_skill_file(project_path, skill)
 }
 
-// Skill Files (references, assets, scripts)
-
-/// Get the directory name for a file type
-pub(crate) fn file_type_to_dir(file_type: &str) -> &str {
-    match file_type {
-        "reference" => "references",
-        "asset" => "assets",
-        "script" => "scripts",
-        _ => "assets", // Default fallback
-    }
-}
-
-/// Write a skill file to the skill directory
-pub fn write_skill_subfile(base_path: &Path, skill: &Skill, file: &SkillFile) -> Result<()> {
-    let skill_dir = base_path.join(".claude").join("skills").join(&skill.name);
-    let type_dir = skill_dir.join(file_type_to_dir(&file.file_type));
-    std::fs::create_dir_all(&type_dir)?;
-
-    let file_path = type_dir.join(&file.name);
-    std::fs::write(file_path, &file.content)?;
-
-    Ok(())
-}
-
-/// Delete a skill file from the skill directory
-pub fn delete_skill_subfile(base_path: &Path, skill: &Skill, file: &SkillFile) -> Result<()> {
-    let skill_dir = base_path.join(".claude").join("skills").join(&skill.name);
-    let type_dir = skill_dir.join(file_type_to_dir(&file.file_type));
-    let file_path = type_dir.join(&file.name);
-
-    if file_path.exists() {
-        std::fs::remove_file(&file_path)?;
-    }
-
-    // Clean up empty directories
-    if type_dir.exists() {
-        if let Ok(entries) = std::fs::read_dir(&type_dir) {
-            if entries.count() == 0 {
-                let _ = std::fs::remove_dir(&type_dir);
-            }
-        }
-    }
-
-    Ok(())
-}
-
-/// Write all skill files for a skill
-pub fn write_skill_files(base_path: &Path, skill: &Skill, files: &[SkillFile]) -> Result<()> {
-    for file in files {
-        write_skill_subfile(base_path, skill, file)?;
-    }
-    Ok(())
-}
-
-/// Write a skill file to global config
-pub fn write_global_skill_file(skill: &Skill, file: &SkillFile) -> Result<()> {
-    let base_dirs =
-        BaseDirs::new().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
-    let home = base_dirs.home_dir();
-    write_skill_subfile(home, skill, file)
-}
-
-/// Delete a skill file from global config
-pub fn delete_global_skill_file(skill: &Skill, file: &SkillFile) -> Result<()> {
-    let base_dirs =
-        BaseDirs::new().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
-    let home = base_dirs.home_dir();
-    delete_skill_subfile(home, skill, file)
-}
-
-/// Write a skill file to project config
-pub fn write_project_skill_file(
-    project_path: &Path,
-    skill: &Skill,
-    file: &SkillFile,
-) -> Result<()> {
-    write_skill_subfile(project_path, skill, file)
-}
-
-/// Delete a skill file from project config
-pub fn delete_project_skill_file(
-    project_path: &Path,
-    skill: &Skill,
-    file: &SkillFile,
-) -> Result<()> {
-    delete_skill_subfile(project_path, skill, file)
-}
-
 // ============================================================================
 // OpenCode Support
 // ============================================================================
@@ -230,28 +136,6 @@ pub fn delete_project_skill_opencode(project_path: &Path, skill: &Skill) -> Resu
     delete_skill_file_opencode(&opencode_dir, skill)
 }
 
-/// Write a skill based on editor type
-pub fn write_skill_for_editor(base_path: &Path, skill: &Skill, editor: EditorType) -> Result<()> {
-    match editor {
-        EditorType::ClaudeCode => write_skill_file(base_path, skill),
-        EditorType::OpenCode => {
-            let opencode_dir = base_path.join(".opencode");
-            write_skill_file_opencode(&opencode_dir, skill)
-        }
-    }
-}
-
-/// Delete a skill based on editor type
-pub fn delete_skill_for_editor(base_path: &Path, skill: &Skill, editor: EditorType) -> Result<()> {
-    match editor {
-        EditorType::ClaudeCode => delete_skill_file(base_path, skill),
-        EditorType::OpenCode => {
-            let opencode_dir = base_path.join(".opencode");
-            delete_skill_file_opencode(&opencode_dir, skill)
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -297,18 +181,6 @@ mod tests {
         }
     }
 
-    fn sample_skill_file() -> SkillFile {
-        SkillFile {
-            id: 1,
-            skill_id: 1,
-            file_type: "reference".to_string(),
-            name: "api-docs.md".to_string(),
-            content: "# API Documentation\n\nSome docs here.".to_string(),
-            created_at: "2024-01-01".to_string(),
-            updated_at: "2024-01-01".to_string(),
-        }
-    }
-
     // =========================================================================
     // generate_skill_markdown tests
     // =========================================================================
@@ -345,31 +217,6 @@ mod tests {
         let md = generate_skill_markdown(&skill);
 
         assert!(md.contains("name: minimal\n"));
-    }
-
-    // =========================================================================
-    // file_type_to_dir tests
-    // =========================================================================
-
-    #[test]
-    fn test_file_type_to_dir_reference() {
-        assert_eq!(file_type_to_dir("reference"), "references");
-    }
-
-    #[test]
-    fn test_file_type_to_dir_asset() {
-        assert_eq!(file_type_to_dir("asset"), "assets");
-    }
-
-    #[test]
-    fn test_file_type_to_dir_script() {
-        assert_eq!(file_type_to_dir("script"), "scripts");
-    }
-
-    #[test]
-    fn test_file_type_to_dir_unknown_defaults_to_assets() {
-        assert_eq!(file_type_to_dir("unknown"), "assets");
-        assert_eq!(file_type_to_dir(""), "assets");
     }
 
     // =========================================================================
@@ -442,28 +289,6 @@ mod tests {
         // Should not error when file doesn't exist
         let result = delete_skill_file(temp_dir.path(), &skill);
         assert!(result.is_ok());
-    }
-
-    // =========================================================================
-    // write_skill_subfile tests
-    // =========================================================================
-
-    #[test]
-    fn test_write_skill_subfile_creates_correct_path() {
-        let temp_dir = TempDir::new().unwrap();
-        let skill = sample_skill();
-        let file = sample_skill_file();
-
-        write_skill_subfile(temp_dir.path(), &skill, &file).unwrap();
-
-        let expected_path = temp_dir
-            .path()
-            .join(".claude")
-            .join("skills")
-            .join("test-agent")
-            .join("references")
-            .join("api-docs.md");
-        assert!(expected_path.exists());
     }
 
     // =========================================================================

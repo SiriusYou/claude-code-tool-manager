@@ -231,6 +231,7 @@ pub fn backup_configs() -> Result<(), String> {
 // ============================================================================
 
 /// Add a global MCP directly in the database (for testing)
+#[cfg(test)]
 pub fn add_global_mcp_in_db(db: &Database, mcp_id: i64) -> Result<(), String> {
     let order: i32 = db
         .conn()
@@ -252,6 +253,7 @@ pub fn add_global_mcp_in_db(db: &Database, mcp_id: i64) -> Result<(), String> {
 }
 
 /// Remove a global MCP directly from the database (for testing)
+#[cfg(test)]
 pub fn remove_global_mcp_from_db(db: &Database, mcp_id: i64) -> Result<(), String> {
     db.conn()
         .execute("DELETE FROM global_mcps WHERE mcp_id = ?", [mcp_id])
@@ -260,6 +262,7 @@ pub fn remove_global_mcp_from_db(db: &Database, mcp_id: i64) -> Result<(), Strin
 }
 
 /// Toggle a global MCP directly in the database (for testing)
+#[cfg(test)]
 pub fn toggle_global_mcp_in_db(db: &Database, id: i64, enabled: bool) -> Result<(), String> {
     db.conn()
         .execute(
@@ -271,6 +274,7 @@ pub fn toggle_global_mcp_in_db(db: &Database, id: i64, enabled: bool) -> Result<
 }
 
 /// Get all global MCPs directly from the database (for testing)
+#[cfg(test)]
 pub fn get_global_mcps_from_db(db: &Database) -> Result<Vec<GlobalMcp>, String> {
     let mut stmt = db
         .conn()

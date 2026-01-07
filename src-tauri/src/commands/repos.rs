@@ -477,6 +477,7 @@ pub fn reset_repos_to_defaults(db: State<'_, Arc<Mutex<Database>>>) -> Result<()
 // ============================================================================
 
 /// Add a repo directly in the database (for testing)
+#[cfg(test)]
 pub fn add_repo_in_db(db: &Database, request: &CreateRepoRequest) -> Result<Repo, String> {
     let (owner, repo) =
         parse_github_url(&request.github_url).ok_or_else(|| "Invalid GitHub URL".to_string())?;
@@ -503,6 +504,7 @@ pub fn add_repo_in_db(db: &Database, request: &CreateRepoRequest) -> Result<Repo
 }
 
 /// Get a repo by ID directly from the database (for testing)
+#[cfg(test)]
 pub fn get_repo_by_id(db: &Database, id: i64) -> Result<Repo, String> {
     db.conn()
         .query_row(
@@ -533,6 +535,7 @@ pub fn get_repo_by_id(db: &Database, id: i64) -> Result<Repo, String> {
 }
 
 /// Toggle a repo directly in the database (for testing)
+#[cfg(test)]
 pub fn toggle_repo_in_db(db: &Database, id: i64, enabled: bool) -> Result<(), String> {
     db.conn()
         .execute(
@@ -544,6 +547,7 @@ pub fn toggle_repo_in_db(db: &Database, id: i64, enabled: bool) -> Result<(), St
 }
 
 /// Remove a repo directly in the database (for testing)
+#[cfg(test)]
 pub fn remove_repo_in_db(db: &Database, id: i64) -> Result<(), String> {
     // Check if it's a default repo
     let is_default: bool = db
@@ -569,6 +573,7 @@ pub fn remove_repo_in_db(db: &Database, id: i64) -> Result<(), String> {
 }
 
 /// Add a repo item directly in the database (for testing)
+#[cfg(test)]
 pub fn add_repo_item_in_db(
     db: &Database,
     repo_id: i64,
@@ -590,6 +595,7 @@ pub fn add_repo_item_in_db(
 }
 
 /// Get a repo item by ID directly from the database (for testing)
+#[cfg(test)]
 pub fn get_repo_item_by_id(db: &Database, id: i64) -> Result<RepoItem, String> {
     db.conn()
         .query_row(
@@ -620,6 +626,7 @@ pub fn get_repo_item_by_id(db: &Database, id: i64) -> Result<RepoItem, String> {
 }
 
 /// Mark a repo item as imported directly in the database (for testing)
+#[cfg(test)]
 pub fn mark_item_imported_in_db(
     db: &Database,
     item_id: i64,
@@ -635,6 +642,7 @@ pub fn mark_item_imported_in_db(
 }
 
 /// Convert GitHub blob URL to raw URL (for testing)
+#[cfg(test)]
 pub(crate) fn convert_to_raw_url(url: &str) -> String {
     if url.contains("github.com") && url.contains("/blob/") {
         url.replace("github.com", "raw.githubusercontent.com")

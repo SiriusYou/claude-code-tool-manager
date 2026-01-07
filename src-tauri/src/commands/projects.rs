@@ -404,6 +404,7 @@ pub fn sync_project_config(
 // ============================================================================
 
 /// Create a project directly in the database (for testing)
+#[cfg(test)]
 pub fn create_project_in_db(
     db: &Database,
     project: &CreateProjectRequest,
@@ -421,6 +422,7 @@ pub fn create_project_in_db(
 }
 
 /// Get a project by ID directly from the database (for testing)
+#[cfg(test)]
 pub fn get_project_by_id(db: &Database, id: i64) -> Result<Project, String> {
     db.conn()
         .query_row(
@@ -447,6 +449,7 @@ pub fn get_project_by_id(db: &Database, id: i64) -> Result<Project, String> {
 }
 
 /// Get a project by path directly from the database (for testing)
+#[cfg(test)]
 pub fn get_project_by_path(db: &Database, path: &str) -> Result<Project, String> {
     db.conn()
         .query_row(
@@ -473,6 +476,7 @@ pub fn get_project_by_path(db: &Database, path: &str) -> Result<Project, String>
 }
 
 /// Get all projects directly from the database (for testing)
+#[cfg(test)]
 pub fn get_all_projects_from_db(db: &Database) -> Result<Vec<Project>, String> {
     let mut stmt = db
         .conn()
@@ -508,6 +512,7 @@ pub fn get_all_projects_from_db(db: &Database) -> Result<Vec<Project>, String> {
 }
 
 /// Delete a project directly from the database (for testing)
+#[cfg(test)]
 pub fn delete_project_from_db(db: &Database, id: i64) -> Result<(), String> {
     db.conn()
         .execute("DELETE FROM projects WHERE id = ?", [id])
@@ -532,6 +537,7 @@ pub fn toggle_project_favorite(
 }
 
 /// Assign an MCP to a project directly in the database (for testing)
+#[cfg(test)]
 pub fn assign_mcp_to_project_in_db(
     db: &Database,
     project_id: i64,
@@ -557,6 +563,7 @@ pub fn assign_mcp_to_project_in_db(
 }
 
 /// Remove an MCP from a project directly in the database (for testing)
+#[cfg(test)]
 pub fn remove_mcp_from_project_in_db(
     db: &Database,
     project_id: i64,
@@ -572,6 +579,7 @@ pub fn remove_mcp_from_project_in_db(
 }
 
 /// Toggle a project MCP directly in the database (for testing)
+#[cfg(test)]
 pub fn toggle_project_mcp_in_db(
     db: &Database,
     assignment_id: i64,
@@ -587,6 +595,7 @@ pub fn toggle_project_mcp_in_db(
 }
 
 /// Get project MCP assignments directly from the database (for testing)
+#[cfg(test)]
 pub fn get_project_mcps_from_db(db: &Database, project_id: i64) -> Result<Vec<ProjectMcp>, String> {
     let mut stmt = db
         .conn()

@@ -528,6 +528,7 @@ pub fn get_project_subagents(
 // ============================================================================
 
 /// Create a subagent directly in the database (for testing)
+#[cfg(test)]
 pub fn create_subagent_in_db(
     db: &Database,
     subagent: &CreateSubAgentRequest,
@@ -558,6 +559,7 @@ pub fn create_subagent_in_db(
 }
 
 /// Get a subagent by ID directly from the database (for testing)
+#[cfg(test)]
 pub fn get_subagent_by_id(db: &Database, id: i64) -> Result<SubAgent, String> {
     let mut stmt = db
         .conn()
@@ -572,6 +574,7 @@ pub fn get_subagent_by_id(db: &Database, id: i64) -> Result<SubAgent, String> {
 }
 
 /// Get all subagents directly from the database (for testing)
+#[cfg(test)]
 pub fn get_all_subagents_from_db(db: &Database) -> Result<Vec<SubAgent>, String> {
     let mut stmt = db
         .conn()
@@ -591,6 +594,7 @@ pub fn get_all_subagents_from_db(db: &Database) -> Result<Vec<SubAgent>, String>
 }
 
 /// Update a subagent directly in the database (for testing)
+#[cfg(test)]
 pub fn update_subagent_in_db(
     db: &Database,
     id: i64,
@@ -621,6 +625,7 @@ pub fn update_subagent_in_db(
 }
 
 /// Delete a subagent directly from the database (for testing)
+#[cfg(test)]
 pub fn delete_subagent_from_db(db: &Database, id: i64) -> Result<(), String> {
     db.conn()
         .execute("DELETE FROM subagents WHERE id = ?", [id])

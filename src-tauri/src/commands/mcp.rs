@@ -293,6 +293,7 @@ pub fn toggle_global_mcp(
 // ============================================================================
 
 /// Create an MCP directly in the database (for testing)
+#[cfg(test)]
 pub fn create_mcp_in_db(db: &Database, mcp: &CreateMcpRequest) -> Result<Mcp, String> {
     let args_json = mcp.args.as_ref().map(|a| serde_json::to_string(a).unwrap());
     let headers_json = mcp
@@ -326,6 +327,7 @@ pub fn create_mcp_in_db(db: &Database, mcp: &CreateMcpRequest) -> Result<Mcp, St
 }
 
 /// Get an MCP by ID directly from the database (for testing)
+#[cfg(test)]
 pub fn get_mcp_by_id(db: &Database, id: i64) -> Result<Mcp, String> {
     let mut stmt = db
         .conn()
@@ -340,6 +342,7 @@ pub fn get_mcp_by_id(db: &Database, id: i64) -> Result<Mcp, String> {
 }
 
 /// Get all MCPs directly from the database (for testing)
+#[cfg(test)]
 pub fn get_all_mcps_from_db(db: &Database) -> Result<Vec<Mcp>, String> {
     let mut stmt = db
         .conn()
@@ -360,6 +363,7 @@ pub fn get_all_mcps_from_db(db: &Database) -> Result<Vec<Mcp>, String> {
 }
 
 /// Update an MCP directly in the database (for testing)
+#[cfg(test)]
 pub fn update_mcp_in_db(db: &Database, id: i64, mcp: &CreateMcpRequest) -> Result<Mcp, String> {
     let args_json = mcp.args.as_ref().map(|a| serde_json::to_string(a).unwrap());
     let headers_json = mcp
@@ -394,6 +398,7 @@ pub fn update_mcp_in_db(db: &Database, id: i64, mcp: &CreateMcpRequest) -> Resul
 }
 
 /// Delete an MCP directly from the database (for testing)
+#[cfg(test)]
 pub fn delete_mcp_from_db(db: &Database, id: i64) -> Result<(), String> {
     db.conn()
         .execute("DELETE FROM mcps WHERE id = ?", [id])
@@ -402,6 +407,7 @@ pub fn delete_mcp_from_db(db: &Database, id: i64) -> Result<(), String> {
 }
 
 /// Toggle global MCP directly in the database (for testing)
+#[cfg(test)]
 pub fn toggle_global_mcp_in_db(db: &Database, id: i64, enabled: bool) -> Result<(), String> {
     db.conn()
         .execute(

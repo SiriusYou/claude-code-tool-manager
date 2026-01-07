@@ -137,16 +137,6 @@ pub fn write_project_hooks(project_path: &Path, hooks: &[Hook]) -> Result<()> {
     write_settings_file(&settings_path, &settings)
 }
 
-/// Remove all hooks from the global settings file
-pub fn clear_global_hooks() -> Result<()> {
-    write_global_hooks(&[])
-}
-
-/// Remove all hooks from a project's settings file
-pub fn clear_project_hooks(project_path: &Path) -> Result<()> {
-    write_project_hooks(project_path, &[])
-}
-
 /// Convert hooks to Claude Code settings.json format for export
 /// This returns a serde_json::Value that can be serialized for export
 pub fn hooks_to_settings_format(hooks: &[Hook]) -> Value {

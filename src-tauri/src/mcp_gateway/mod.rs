@@ -8,4 +8,4 @@ pub mod backend;
 pub mod server;
 pub mod tools;
 
-pub use server::{GatewayServerConfig, GatewayServerState, GatewayServerStatus};
+pub use server::GatewayServerState;

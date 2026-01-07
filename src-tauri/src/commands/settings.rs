@@ -134,6 +134,7 @@ pub fn update_app_settings_in_db(db: &Database, settings: &AppSettings) -> Resul
 }
 
 /// Check if a specific editor is enabled
+#[cfg(test)]
 pub fn is_editor_enabled(db: &Database, editor_id: &str) -> bool {
     get_enabled_editors_from_db(db).contains(&editor_id.to_string())
 }

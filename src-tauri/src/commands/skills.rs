@@ -768,11 +768,13 @@ pub fn delete_skill_file(db: State<'_, Arc<Mutex<Database>>>, id: i64) -> Result
 
 /// Create a skill directly in the database (for testing)
 /// Note: Set skip_validation to true to bypass validation in tests
+#[cfg(test)]
 pub fn create_skill_in_db(db: &Database, skill: &CreateSkillRequest) -> Result<Skill, String> {
     create_skill_in_db_internal(db, skill, false)
 }
 
 /// Create a skill without validation (for testing edge cases)
+#[cfg(test)]
 pub fn create_skill_in_db_unvalidated(
     db: &Database,
     skill: &CreateSkillRequest,
@@ -780,6 +782,7 @@ pub fn create_skill_in_db_unvalidated(
     create_skill_in_db_internal(db, skill, true)
 }
 
+#[cfg(test)]
 fn create_skill_in_db_internal(
     db: &Database,
     skill: &CreateSkillRequest,
@@ -812,6 +815,7 @@ fn create_skill_in_db_internal(
 }
 
 /// Get a skill by ID directly from the database (for testing)
+#[cfg(test)]
 pub fn get_skill_by_id(db: &Database, id: i64) -> Result<Skill, String> {
     let query = format!("SELECT {} FROM skills WHERE id = ?", SKILL_SELECT_FIELDS);
     let mut stmt = db.conn().prepare(&query).map_err(|e| e.to_string())?;
@@ -821,6 +825,7 @@ pub fn get_skill_by_id(db: &Database, id: i64) -> Result<Skill, String> {
 }
 
 /// Get all skills directly from the database (for testing)
+#[cfg(test)]
 pub fn get_all_skills_from_db(db: &Database) -> Result<Vec<Skill>, String> {
     let query = format!("SELECT {} FROM skills ORDER BY name", SKILL_SELECT_FIELDS);
     let mut stmt = db.conn().prepare(&query).map_err(|e| e.to_string())?;
@@ -835,6 +840,7 @@ pub fn get_all_skills_from_db(db: &Database) -> Result<Vec<Skill>, String> {
 }
 
 /// Update a skill directly in the database (for testing)
+#[cfg(test)]
 pub fn update_skill_in_db(
     db: &Database,
     id: i64,
@@ -865,6 +871,7 @@ pub fn update_skill_in_db(
 }
 
 /// Delete a skill directly from the database (for testing)
+#[cfg(test)]
 pub fn delete_skill_from_db(db: &Database, id: i64) -> Result<(), String> {
     db.conn()
         .execute("DELETE FROM skills WHERE id = ?", [id])
@@ -873,6 +880,7 @@ pub fn delete_skill_from_db(db: &Database, id: i64) -> Result<(), String> {
 }
 
 /// Create a skill file directly in the database (for testing)
+#[cfg(test)]
 pub fn create_skill_file_in_db(
     db: &Database,
     file: &CreateSkillFileRequest,
@@ -900,6 +908,7 @@ pub fn create_skill_file_in_db(
 }
 
 /// Get skill files directly from the database (for testing)
+#[cfg(test)]
 pub fn get_skill_files_from_db(db: &Database, skill_id: i64) -> Result<Vec<SkillFile>, String> {
     let mut stmt = db
         .conn()
@@ -919,6 +928,7 @@ pub fn get_skill_files_from_db(db: &Database, skill_id: i64) -> Result<Vec<Skill
 }
 
 /// Delete a skill file directly from the database (for testing)
+#[cfg(test)]
 pub fn delete_skill_file_from_db(db: &Database, id: i64) -> Result<(), String> {
     db.conn()
         .execute("DELETE FROM skill_files WHERE id = ?", [id])
