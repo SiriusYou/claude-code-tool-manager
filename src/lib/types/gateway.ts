@@ -2,6 +2,17 @@ import type { Mcp } from './mcp';
 
 export type BackendStatus = 'connecting' | 'connected' | 'disconnected' | 'failed' | 'restarting';
 
+/**
+ * Metadata about an available MCP (for lazy loading - connection status tracked separately)
+ */
+export interface AvailableMcp {
+	id: number;
+	name: string;
+	description: string | null;
+	mcpType: string;
+	status: BackendStatus;
+}
+
 export interface BackendInfo {
 	mcpId: number;
 	mcpName: string;
@@ -27,7 +38,11 @@ export interface GatewayServerStatus {
 	port: number;
 	url: string;
 	mcpEndpoint: string;
+	/** Available MCPs that can be lazily connected */
+	availableMcps: AvailableMcp[];
+	/** Currently connected backends (lazily loaded) */
 	connectedBackends: BackendInfo[];
+	/** Total tools from connected backends */
 	totalTools: number;
 }
 

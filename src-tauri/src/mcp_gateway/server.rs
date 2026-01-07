@@ -3,7 +3,7 @@
 //! Handles starting, stopping, and managing the Gateway HTTP server.
 
 use crate::db::Database;
-use crate::mcp_gateway::backend::{BackendInfo, GatewayBackendManager};
+use crate::mcp_gateway::backend::{AvailableMcp, BackendInfo, GatewayBackendManager};
 use crate::mcp_gateway::tools::GatewayServer;
 use axum::Router;
 use rmcp::transport::streamable_http_server::{
@@ -47,7 +47,11 @@ pub struct GatewayServerStatus {
     pub port: u16,
     pub url: String,
     pub mcp_endpoint: String,
+    /// Available MCPs that can be lazily connected
+    pub available_mcps: Vec<AvailableMcp>,
+    /// Currently connected backends (lazily loaded)
     pub connected_backends: Vec<BackendInfo>,
+    /// Total tools from connected backends
     pub total_tools: usize,
 }
 
@@ -101,6 +105,7 @@ impl GatewayServerState {
             port: self.get_port(),
             url: self.get_url(),
             mcp_endpoint: self.get_mcp_endpoint(),
+            available_mcps: backend_manager.get_available_mcps(),
             connected_backends: backend_manager.get_backends_info(),
             total_tools: backend_manager.tool_count(),
         }
@@ -117,12 +122,11 @@ impl GatewayServerState {
             config.port
         };
 
-        // Load and connect to all gateway MCPs
+        // Load available MCPs (lazy mode - no connections yet)
         {
             let mut backend_manager = self.backend_manager.lock().await;
             backend_manager
-                .load_and_connect()
-                .await
+                .load_available_mcps()
                 .map_err(|e| e.to_string())?;
         }
 
@@ -192,10 +196,9 @@ impl GatewayServerState {
 
         let status = self.get_status().await;
         log::info!(
-            "[Gateway] MCP Gateway started successfully on port {} with {} backends and {} tools",
+            "[Gateway] MCP Gateway started in lazy mode on port {} with {} available MCPs",
             port,
-            status.connected_backends.len(),
-            status.total_tools
+            status.available_mcps.len()
         );
         Ok(())
     }
@@ -256,7 +259,7 @@ impl GatewayServerState {
 pub fn generate_gateway_mcp_entry(port: u16) -> crate::db::models::CreateMcpRequest {
     crate::db::models::CreateMcpRequest {
         name: "MCP Gateway".to_string(),
-        description: Some("Aggregates multiple MCP servers into a single endpoint. Tool names are prefixed with their source MCP (e.g., 'filesystem__read_file').".to_string()),
+        description: Some("Lazy-loading MCP gateway. Use list_available_mcps to discover MCPs, load_mcp_tools to connect and get tools, and call_mcp_tool to execute tools.".to_string()),
         mcp_type: "http".to_string(),  // Uses HTTP transport (Streamable HTTP)
         command: None,
         args: None,
@@ -264,7 +267,7 @@ pub fn generate_gateway_mcp_entry(port: u16) -> crate::db::models::CreateMcpRequ
         headers: None,
         env: None,
         icon: Some("📡".to_string()),
-        tags: Some(vec!["gateway".to_string(), "aggregator".to_string(), "proxy".to_string()]),
+        tags: Some(vec!["gateway".to_string(), "lazy".to_string(), "meta-tools".to_string()]),
     }
 }
 
