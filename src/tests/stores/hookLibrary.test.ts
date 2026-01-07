@@ -504,8 +504,9 @@ describe('Hook Library Store', () => {
 		it('should export hooks to clipboard', async () => {
 			const mockJson = '{"hooks": []}';
 			const mockWriteText = vi.fn().mockResolvedValue(undefined);
-			Object.assign(navigator, {
-				clipboard: { writeText: mockWriteText }
+			Object.defineProperty(navigator, 'clipboard', {
+				value: { writeText: mockWriteText },
+				writable: true
 			});
 
 			vi.mocked(invoke).mockResolvedValueOnce(mockJson);
