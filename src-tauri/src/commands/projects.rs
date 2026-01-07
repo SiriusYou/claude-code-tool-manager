@@ -1,6 +1,6 @@
 use crate::db::{CreateProjectRequest, Database, Mcp, Project, ProjectMcp};
 use crate::services::config_writer;
-use log::{error, info};
+use log::{error, info, warn};
 use rusqlite::params;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -384,7 +384,10 @@ pub fn sync_project_config(
                     project_id
                 );
             }
-            _ => {}
+            unknown => warn!(
+                "[Projects] Unknown editor type '{}' for project '{}'. Skipping.",
+                unknown, path
+            ),
         }
     }
 
