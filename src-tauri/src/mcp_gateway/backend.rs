@@ -36,8 +36,20 @@ pub struct BackendInfo {
     pub restart_count: u32,
 }
 
+/// Metadata about an available MCP (for lazy loading - no connection required)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AvailableMcp {
+    pub id: i64,
+    pub name: String,
+    pub description: Option<String>,
+    pub mcp_type: String,
+    pub status: BackendStatus,
+}
+
 /// Mapping from namespaced tool name to original tool info
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ToolMapping {
     pub mcp_id: i64,
     pub mcp_name: String,
@@ -86,9 +98,14 @@ impl BackendConnection {
 
 /// Gateway Backend Manager
 ///
-/// Manages all backend MCP connections and provides a unified tool registry.
+/// Manages all backend MCP connections with lazy loading.
+/// MCPs are only connected when explicitly requested via load_mcp_tools or call_mcp_tool.
 pub struct GatewayBackendManager {
+    /// Available MCPs loaded from database (not connected)
+    available_mcps: Vec<AvailableMcp>,
+    /// Active backend connections (lazily created)
     backends: HashMap<i64, BackendConnection>,
+    /// Tool index for connected backends
     tool_index: HashMap<String, ToolMapping>,
     db: Arc<Mutex<Database>>,
 }
@@ -96,6 +113,7 @@ pub struct GatewayBackendManager {
 impl GatewayBackendManager {
     pub fn new(db: Arc<Mutex<Database>>) -> Self {
         Self {
+            available_mcps: Vec::new(),
             backends: HashMap::new(),
             tool_index: HashMap::new(),
             db,
@@ -118,8 +136,8 @@ impl GatewayBackendManager {
         format!("{}__{}", safe_mcp_name, tool_name)
     }
 
-    /// Load gateway MCPs from database and connect to them
-    pub async fn load_and_connect(&mut self) -> Result<()> {
+    /// Load available MCPs from database (no connections made - lazy loading)
+    pub fn load_available_mcps(&mut self) -> Result<()> {
         let gateway_mcps = {
             let db = self
                 .db
@@ -128,24 +146,99 @@ impl GatewayBackendManager {
             db.get_enabled_gateway_mcps()?
         };
 
-        info!("[Gateway] Loading {} enabled MCPs", gateway_mcps.len());
-
-        for gateway_mcp in gateway_mcps {
-            self.add_backend(gateway_mcp).await;
-        }
-
-        self.build_tool_index();
-
         info!(
-            "[Gateway] Loaded {} tools from {} backends",
-            self.tool_index.len(),
-            self.backends
-                .values()
-                .filter(|b| matches!(b.status, BackendStatus::Connected))
-                .count()
+            "[Gateway] Loaded {} available MCPs (lazy mode - no connections yet)",
+            gateway_mcps.len()
         );
 
+        self.available_mcps = gateway_mcps
+            .into_iter()
+            .map(|gm| AvailableMcp {
+                id: gm.mcp.id,
+                name: gm.mcp.name,
+                description: gm.mcp.description,
+                mcp_type: gm.mcp.mcp_type,
+                status: BackendStatus::Disconnected,
+            })
+            .collect();
+
         Ok(())
+    }
+
+    /// Get list of available MCPs (for list_available_mcps meta-tool)
+    pub fn get_available_mcps(&self) -> Vec<AvailableMcp> {
+        self.available_mcps
+            .iter()
+            .map(|mcp| {
+                // Update status based on backend connection state
+                let status = self
+                    .backends
+                    .values()
+                    .find(|b| b.mcp.id == mcp.id)
+                    .map(|b| b.status.clone())
+                    .unwrap_or(BackendStatus::Disconnected);
+
+                AvailableMcp {
+                    status,
+                    ..mcp.clone()
+                }
+            })
+            .collect()
+    }
+
+    /// Connect to an MCP lazily by name (for load_mcp_tools meta-tool)
+    pub async fn connect_backend_lazy(&mut self, mcp_name: &str) -> Result<Vec<McpTool>> {
+        // Find the MCP in available_mcps
+        let mcp_meta = self
+            .available_mcps
+            .iter()
+            .find(|m| m.name == mcp_name)
+            .ok_or_else(|| anyhow!("MCP '{}' not found in gateway", mcp_name))?
+            .clone();
+
+        // Check if already connected
+        if let Some(backend) = self.backends.get(&mcp_meta.id) {
+            if matches!(backend.status, BackendStatus::Connected) {
+                info!(
+                    "[Gateway] MCP '{}' already connected, returning cached tools",
+                    mcp_name
+                );
+                return Ok(backend.tools.clone());
+            }
+        }
+
+        // Load full MCP config from database
+        let gateway_mcp = {
+            let db = self
+                .db
+                .lock()
+                .map_err(|e| anyhow!("Failed to lock database: {}", e))?;
+            db.get_gateway_mcps()?
+                .into_iter()
+                .find(|gm| gm.mcp.id == mcp_meta.id)
+                .ok_or_else(|| anyhow!("MCP '{}' not found in gateway database", mcp_name))?
+        };
+
+        info!("[Gateway] Lazy-connecting to MCP '{}'", mcp_name);
+
+        // Connect to the backend
+        self.add_backend(gateway_mcp).await;
+        self.build_tool_index();
+
+        // Return the tools
+        self.backends
+            .get(&mcp_meta.id)
+            .map(|b| b.tools.clone())
+            .ok_or_else(|| anyhow!("Failed to connect to MCP '{}'", mcp_name))
+    }
+
+    /// Get tools for a specific MCP (returns None if not connected)
+    #[allow(dead_code)]
+    pub fn get_backend_tools(&self, mcp_name: &str) -> Option<Vec<McpTool>> {
+        self.backends
+            .values()
+            .find(|b| b.mcp.name == mcp_name && matches!(b.status, BackendStatus::Connected))
+            .map(|b| b.tools.clone())
     }
 
     /// Add a backend connection for an MCP
@@ -247,6 +340,7 @@ impl GatewayBackendManager {
     }
 
     /// Get all aggregated tools with namespaced names
+    #[allow(dead_code)]
     pub fn get_tools(&self) -> Vec<McpTool> {
         self.tool_index
             .values()
@@ -265,7 +359,49 @@ impl GatewayBackendManager {
             .collect()
     }
 
-    /// Call a tool on the appropriate backend
+    /// Call a tool on a specific MCP by name (for call_mcp_tool meta-tool)
+    /// This is the primary method for lazy-loading mode
+    pub fn call_tool_on_mcp(
+        &mut self,
+        mcp_name: &str,
+        tool_name: &str,
+        arguments: serde_json::Value,
+    ) -> Result<ToolCallResult> {
+        // Find the backend by MCP name
+        let backend = self
+            .backends
+            .values_mut()
+            .find(|b| b.mcp.name == mcp_name)
+            .ok_or_else(|| {
+                anyhow!(
+                    "MCP '{}' is not connected. Call load_mcp_tools first to connect.",
+                    mcp_name
+                )
+            })?;
+
+        if !matches!(backend.status, BackendStatus::Connected) {
+            return Err(anyhow!(
+                "MCP '{}' is not connected (status: {:?}). Call load_mcp_tools first.",
+                mcp_name,
+                backend.status
+            ));
+        }
+
+        let client = backend
+            .client
+            .as_mut()
+            .ok_or_else(|| anyhow!("MCP '{}' has no active client", mcp_name))?;
+
+        info!(
+            "[Gateway] Calling tool '{}' on MCP '{}'",
+            tool_name, mcp_name
+        );
+
+        client.call_tool(tool_name, arguments)
+    }
+
+    /// Call a tool on the appropriate backend (legacy method for namespaced tools)
+    #[allow(dead_code)]
     pub fn call_tool(
         &mut self,
         namespaced_name: &str,

@@ -117,10 +117,10 @@
 	];
 </script>
 
-<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-	<div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-2xl w-full mx-4 overflow-hidden">
+<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+	<div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden">
 		<!-- Header -->
-		<div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+		<div class="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
 			<div class="flex items-center gap-3">
 				<div class="w-10 h-10 rounded-lg bg-orange-100 dark:bg-orange-900/50 flex items-center justify-center">
 					<Volume2 class="w-5 h-5 text-orange-600 dark:text-orange-400" />
@@ -136,7 +136,7 @@
 		</div>
 
 		<!-- Progress bar -->
-		<div class="h-1 bg-gray-200 dark:bg-gray-700">
+		<div class="flex-shrink-0 h-1 bg-gray-200 dark:bg-gray-700">
 			<div
 				class="h-full bg-orange-500 transition-all duration-300"
 				style="width: {(step / 3) * 100}%"
@@ -144,7 +144,7 @@
 		</div>
 
 		<!-- Content -->
-		<div class="p-6">
+		<div class="flex-1 overflow-y-auto p-6">
 			{#if step === 1}
 				<!-- Step 1: Choose events -->
 				<div class="space-y-6">
@@ -292,7 +292,7 @@
 		</div>
 
 		<!-- Footer -->
-		<div class="flex items-center justify-between px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+		<div class="flex-shrink-0 flex items-center justify-between px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
 			<button
 				onclick={() => (step = Math.max(1, step - 1))}
 				class="btn btn-secondary"
