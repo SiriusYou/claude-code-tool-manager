@@ -609,7 +609,7 @@ dependencies = [
 
 [[package]]
 name = "claude-code-tool-manager"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -648,7 +648,7 @@ dependencies = [
  "tokio-stream",
  "tokio-test",
  "toml 0.9.10+spec-1.1.0",
- "toml_edit 0.22.27",
+ "toml_edit 0.23.10+spec-1.0.0",
  "tower-http",
  "tracing",
  "tracing-subscriber",
@@ -5746,7 +5746,6 @@ dependencies = [
  "serde",
  "serde_spanned 0.6.9",
  "toml_datetime 0.6.11",
- "toml_write",
  "winnow 0.7.14",
 ]
 
@@ -5759,6 +5758,7 @@ dependencies = [
  "indexmap 2.12.1",
  "toml_datetime 0.7.5+spec-1.1.0",
  "toml_parser",
+ "toml_writer",
  "winnow 0.7.14",
 ]
 
@@ -5770,12 +5770,6 @@ checksum = "a3198b4b0a8e11f09dd03e133c0280504d0801269e9afa46362ffde1cbeebf44"
 dependencies = [
  "winnow 0.7.14",
 ]
-
-[[package]]
-name = "toml_write"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
 
 [[package]]
 name = "toml_writer"
