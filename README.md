@@ -50,6 +50,15 @@ Claude Code configuration is scattered across your filesystem—`~/.claude.json`
 
 ## Installation
 
+### macOS (Homebrew)
+
+```bash
+brew tap tylergraydev/cctm
+brew install --cask claude-code-tool-manager
+```
+
+### Direct Download
+
 Download from [Releases](https://github.com/tylergraydev/claude-code-tool-manager/releases):
 
 | Platform | Download |
