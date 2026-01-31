@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.2] - 2026-01-31
+
+### Changed
+- **Dependencies**: Updated npm and Cargo dependencies
+  - svelte 5.46.1 → 5.49.1
+  - lucide-svelte 0.562.0 → 0.563.0
+  - @playwright/test 1.57.0 → 1.58.0
+  - @sveltejs/vite-plugin-svelte 6.2.3 → 6.2.4
+  - @testing-library/svelte 4.2.3 → 5.3.1
+  - serde_json 1.0.145 → 1.0.149
+  - thiserror 2.0.17 → 2.0.18
+  - toml 0.9.10 → 0.9.11
+  - tokio-test 0.4.4 → 0.4.5
+  - rmcp 0.12.0 → 0.14.0
+
 ## [2.1.1] - 2026-01-26
 
 ### Changed
@@ -305,7 +320,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Dark mode
   - Search and filter
 
-[Unreleased]: https://github.com/tylergraydev/claude-code-tool-manager/compare/v2.1.1...HEAD
+[Unreleased]: https://github.com/tylergraydev/claude-code-tool-manager/compare/v2.1.2...HEAD
+[2.1.2]: https://github.com/tylergraydev/claude-code-tool-manager/compare/v2.1.1...v2.1.2
 [2.1.1]: https://github.com/tylergraydev/claude-code-tool-manager/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/tylergraydev/claude-code-tool-manager/compare/v2.0.1...v2.1.0
 [2.0.1]: https://github.com/tylergraydev/claude-code-tool-manager/compare/v2.0.0...v2.0.1
