@@ -170,6 +170,29 @@ pub type McpTuple = (
     Option<String>, // env (JSON)
 );
 
+/// Create a backup of the config file before modifying it
+fn backup_config_file(path: &Path) -> Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let backup_ext = if path.extension().and_then(|e| e.to_str()) == Some("toml") {
+        "toml.bak"
+    } else {
+        "bak"
+    };
+    let backup_path = path.with_extension(backup_ext);
+    std::fs::copy(path, &backup_path).map_err(|e| {
+        anyhow::anyhow!(
+            "Failed to create backup of {} before writing: {}",
+            path.display(),
+            e
+        )
+    })?;
+
+    Ok(())
+}
+
 /// Write MCP servers to Codex config.toml, preserving existing content
 pub fn write_codex_config(path: &Path, mcps: &[McpTuple]) -> Result<()> {
     // Read existing config or create new
@@ -179,7 +202,14 @@ pub fn write_codex_config(path: &Path, mcps: &[McpTuple]) -> Result<()> {
         String::new()
     };
 
-    let mut doc: DocumentMut = content.parse().unwrap_or_default();
+    let mut doc: DocumentMut = content.parse().map_err(|e| {
+        anyhow::anyhow!(
+            "Failed to parse existing Codex config at {}: {}. \
+             Refusing to overwrite to prevent data loss.",
+            path.display(),
+            e
+        )
+    })?;
 
     // Create or get mcp_servers table
     if doc.get("mcp_servers").is_none() {
@@ -270,6 +300,9 @@ pub fn write_codex_config(path: &Path, mcps: &[McpTuple]) -> Result<()> {
         std::fs::create_dir_all(parent)?;
     }
 
+    // Back up the existing file before modifying it
+    backup_config_file(path)?;
+
     // Write back
     std::fs::write(path, doc.to_string())?;
 
@@ -327,6 +360,9 @@ pub fn remove_mcp_from_codex_config(path: &Path, name: &str) -> Result<()> {
     if let Some(mcp_servers) = doc.get_mut("mcp_servers").and_then(|v| v.as_table_mut()) {
         mcp_servers.remove(name);
     }
+
+    // Back up before writing
+    backup_config_file(path)?;
 
     // Write back
     std::fs::write(path, doc.to_string())?;

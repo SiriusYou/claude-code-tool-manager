@@ -150,15 +150,43 @@ pub type McpTuple = (
     Option<String>, // env (JSON)
 );
 
+/// Create a backup of the config file before modifying it
+fn backup_config_file(path: &Path) -> Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let backup_path = path.with_extension("json.bak");
+    std::fs::copy(path, &backup_path).map_err(|e| {
+        anyhow::anyhow!(
+            "Failed to create backup of {} before writing: {}",
+            path.display(),
+            e
+        )
+    })?;
+
+    Ok(())
+}
+
 /// Write MCP servers to Cursor mcp.json, preserving existing content
 pub fn write_cursor_config(path: &Path, mcps: &[McpTuple]) -> Result<()> {
     // Read existing config or create new
     let mut config: CursorMcpConfig = if path.exists() {
         let content = std::fs::read_to_string(path)?;
-        serde_json::from_str(&content).unwrap_or_default()
+        serde_json::from_str(&content).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to parse existing Cursor config at {}: {}. \
+                 Refusing to overwrite to prevent data loss.",
+                path.display(),
+                e
+            )
+        })?
     } else {
         CursorMcpConfig::default()
     };
+
+    // Back up the existing file before modifying it
+    backup_config_file(path)?;
 
     // Clear existing servers (we'll rebuild them)
     config.mcp_servers.clear();
@@ -281,6 +309,9 @@ pub fn remove_mcp_from_cursor_config(path: &Path, name: &str) -> Result<()> {
 
     // Remove the MCP from servers
     config.mcp_servers.remove(name);
+
+    // Back up before writing
+    backup_config_file(path)?;
 
     // Write back
     let json = serde_json::to_string_pretty(&config)?;

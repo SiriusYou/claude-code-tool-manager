@@ -4,6 +4,24 @@ use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 use std::path::Path;
 
+/// Create a backup of the config file before modifying it
+fn backup_config_file(path: &Path) -> Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let backup_path = path.with_extension("json.bak");
+    std::fs::copy(path, &backup_path).map_err(|e| {
+        anyhow::anyhow!(
+            "Failed to create backup of {} before writing: {}",
+            path.display(),
+            e
+        )
+    })?;
+
+    Ok(())
+}
+
 /// OpenCode MCP server configuration (local/stdio)
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct OpenCodeMcpLocal {
@@ -217,7 +235,14 @@ pub fn write_opencode_global_config(config_path: &Path, mcps: &[McpTuple]) -> Re
     // Read existing config or create new
     let mut config: Value = if config_path.exists() {
         let content = std::fs::read_to_string(config_path)?;
-        serde_json::from_str(&content).unwrap_or(json!({}))
+        serde_json::from_str(&content).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to parse existing OpenCode config at {}: {}. \
+                 Refusing to overwrite to prevent data loss.",
+                config_path.display(),
+                e
+            )
+        })?
     } else {
         json!({})
     };
@@ -227,6 +252,9 @@ pub fn write_opencode_global_config(config_path: &Path, mcps: &[McpTuple]) -> Re
     if let Some(mcp) = mcp_config.get("mcp") {
         config["mcp"] = mcp.clone();
     }
+
+    // Back up the existing file before modifying it
+    backup_config_file(config_path)?;
 
     // Write back
     let content = serde_json::to_string_pretty(&config)?;
@@ -243,7 +271,14 @@ pub fn write_opencode_project_config(project_path: &Path, mcps: &[McpTuple]) -> 
     // Read existing config or create new
     let mut config: Value = if config_path.exists() {
         let content = std::fs::read_to_string(&config_path)?;
-        serde_json::from_str(&content).unwrap_or(json!({}))
+        serde_json::from_str(&content).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to parse existing OpenCode config at {}: {}. \
+                 Refusing to overwrite to prevent data loss.",
+                config_path.display(),
+                e
+            )
+        })?
     } else {
         json!({})
     };
@@ -253,6 +288,9 @@ pub fn write_opencode_project_config(project_path: &Path, mcps: &[McpTuple]) -> 
     if let Some(mcp) = mcp_config.get("mcp") {
         config["mcp"] = mcp.clone();
     }
+
+    // Back up the existing file before modifying it
+    backup_config_file(&config_path)?;
 
     // Write back
     let content = serde_json::to_string_pretty(&config)?;

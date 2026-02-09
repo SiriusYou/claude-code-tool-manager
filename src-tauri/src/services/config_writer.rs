@@ -3,6 +3,24 @@ use anyhow::Result;
 use serde_json::{json, Map, Value};
 use std::path::Path;
 
+/// Create a backup of the config file before modifying it
+fn backup_config_file(path: &Path) -> Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let backup_path = path.with_extension("json.bak");
+    std::fs::copy(path, &backup_path).map_err(|e| {
+        anyhow::anyhow!(
+            "Failed to create backup of {} before writing: {}",
+            path.display(),
+            e
+        )
+    })?;
+
+    Ok(())
+}
+
 type McpTuple = (
     String,         // name
     String,         // type
@@ -91,7 +109,14 @@ pub fn write_global_config(paths: &ClaudePathsInternal, mcps: &[McpTuple]) -> Re
     // Read existing ~/.claude.json or create new
     let mut claude_json: Value = if paths.claude_json.exists() {
         let content = std::fs::read_to_string(&paths.claude_json)?;
-        serde_json::from_str(&content).unwrap_or(json!({}))
+        serde_json::from_str(&content).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to parse existing Claude config at {}: {}. \
+                 Refusing to overwrite to prevent data loss.",
+                paths.claude_json.display(),
+                e
+            )
+        })?
     } else {
         json!({})
     };
@@ -101,6 +126,9 @@ pub fn write_global_config(paths: &ClaudePathsInternal, mcps: &[McpTuple]) -> Re
     if let Some(servers) = mcp_config.get("mcpServers") {
         claude_json["mcpServers"] = servers.clone();
     }
+
+    // Back up the existing file before modifying it
+    backup_config_file(&paths.claude_json)?;
 
     // Write back to ~/.claude.json
     let content = serde_json::to_string_pretty(&claude_json)?;
@@ -132,7 +160,14 @@ pub fn write_project_to_claude_json(
     // Read existing claude.json
     let mut claude_json: Value = if paths.claude_json.exists() {
         let content = std::fs::read_to_string(&paths.claude_json)?;
-        serde_json::from_str(&content).unwrap_or(json!({}))
+        serde_json::from_str(&content).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to parse existing Claude config at {}: {}. \
+                 Refusing to overwrite to prevent data loss.",
+                paths.claude_json.display(),
+                e
+            )
+        })?
     } else {
         json!({})
     };
@@ -245,6 +280,9 @@ pub fn write_project_to_claude_json(
 
     project["mcpServers"] = Value::Object(mcp_servers);
     project["disabledMcpServers"] = json!(disabled_mcps);
+
+    // Back up the existing file before modifying it
+    backup_config_file(&paths.claude_json)?;
 
     // Write back
     let content = serde_json::to_string_pretty(&claude_json)?;

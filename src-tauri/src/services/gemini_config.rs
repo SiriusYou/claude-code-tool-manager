@@ -170,15 +170,44 @@ pub type McpTuple = (
     Option<String>, // env (JSON)
 );
 
+/// Create a backup of the settings file before modifying it
+fn backup_settings_file(path: &Path) -> Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let backup_path = path.with_extension("json.bak");
+    std::fs::copy(path, &backup_path).map_err(|e| {
+        anyhow::anyhow!(
+            "Failed to create backup of {} before writing: {}",
+            path.display(),
+            e
+        )
+    })?;
+
+    Ok(())
+}
+
 /// Write MCP servers to Gemini settings.json, preserving existing content
 pub fn write_gemini_config(path: &Path, mcps: &[McpTuple]) -> Result<()> {
     // Read existing config or create new
     let mut config: GeminiSettingsConfig = if path.exists() {
         let content = std::fs::read_to_string(path)?;
-        serde_json::from_str(&content).unwrap_or_default()
+        serde_json::from_str(&content).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to parse existing Gemini settings at {}: {}. \
+                 Refusing to overwrite to prevent data loss. \
+                 Please fix or remove the file manually.",
+                path.display(),
+                e
+            )
+        })?
     } else {
         GeminiSettingsConfig::default()
     };
+
+    // Back up the existing file before modifying it
+    backup_settings_file(path)?;
 
     // Clear existing servers (we'll rebuild them)
     config.mcp_servers.clear();
@@ -319,6 +348,9 @@ pub fn remove_mcp_from_gemini_config(path: &Path, name: &str) -> Result<()> {
 
     // Remove the MCP from servers
     config.mcp_servers.remove(name);
+
+    // Back up before writing
+    backup_settings_file(path)?;
 
     // Write back
     let json = serde_json::to_string_pretty(&config)?;
@@ -712,5 +744,92 @@ mod tests {
 
         // Should not error if file does not exist
         remove_mcp_from_gemini_config(&config_path, "nonexistent").unwrap();
+    }
+
+    // =========================================================================
+    // Safety: parse error handling and backup tests
+    // =========================================================================
+
+    #[test]
+    fn test_write_gemini_config_rejects_unparseable_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("settings.json");
+
+        // Write invalid JSON (e.g. with comments, which serde_json can't parse)
+        let original = "{ // a comment\n\"model\": \"gemini-pro\" }";
+        fs::write(&config_path, original).unwrap();
+
+        let mcps: Vec<McpTuple> = vec![(
+            "test".to_string(),
+            "stdio".to_string(),
+            Some("node".to_string()),
+            None,
+            None,
+            None,
+            None,
+        )];
+
+        // Should return an error instead of silently overwriting
+        let result = write_gemini_config(&config_path, &mcps);
+        assert!(result.is_err());
+
+        // Original file must be untouched
+        let content = fs::read_to_string(&config_path).unwrap();
+        assert_eq!(content, original);
+    }
+
+    #[test]
+    fn test_write_gemini_config_creates_backup() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("settings.json");
+        let backup_path = temp_dir.path().join("settings.json.bak");
+
+        // Write valid existing config
+        let original = r#"{"mcpServers": {}, "model": "gemini-pro"}"#;
+        fs::write(&config_path, original).unwrap();
+
+        let mcps: Vec<McpTuple> = vec![(
+            "new-mcp".to_string(),
+            "stdio".to_string(),
+            Some("node".to_string()),
+            None,
+            None,
+            None,
+            None,
+        )];
+
+        write_gemini_config(&config_path, &mcps).unwrap();
+
+        // Backup should exist with original content
+        assert!(backup_path.exists());
+        let backup_content = fs::read_to_string(&backup_path).unwrap();
+        assert_eq!(backup_content, original);
+
+        // New file should have the MCP and preserve extra fields
+        let new_content = fs::read_to_string(&config_path).unwrap();
+        assert!(new_content.contains("\"new-mcp\""));
+        assert!(new_content.contains("\"model\""));
+    }
+
+    #[test]
+    fn test_remove_mcp_creates_backup() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("settings.json");
+        let backup_path = temp_dir.path().join("settings.json.bak");
+
+        let original = r#"{
+            "mcpServers": {
+                "to-remove": { "command": "node" }
+            },
+            "model": "gemini-pro"
+        }"#;
+        fs::write(&config_path, original).unwrap();
+
+        remove_mcp_from_gemini_config(&config_path, "to-remove").unwrap();
+
+        // Backup should exist with original content
+        assert!(backup_path.exists());
+        let backup_content = fs::read_to_string(&backup_path).unwrap();
+        assert_eq!(backup_content, original);
     }
 }
