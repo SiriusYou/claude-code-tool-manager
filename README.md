@@ -46,6 +46,10 @@ Claude Code configuration is scattered across your filesystem—`~/.claude.json`
 
 **Hooks** — Create and manage Claude Code hooks that run on events like task completion, notifications, and tool use. Includes a sound notification wizard to play sounds when Claude needs your attention or finishes a task.
 
+**Profiles** — Save and restore named configurations of your globally-enabled MCPs, skills, subagents, commands, and hooks. Snapshot your current setup, then switch between "Work" and "Personal" configurations with one click.
+
+**Status Line Builder** — Design custom terminal status lines for Claude Code with a visual builder. Choose from 25+ segment types (model, cost, context window, git branch, vim mode, token counts, usage stats, and more), apply Powerline themes, or browse and install premade status lines from the community gallery.
+
 **Projects** — Scan for existing projects, assign tools globally or per-project, and keep everything in sync with Claude's config files. Search and filter to quickly find projects and available tools.
 
 ## Installation
