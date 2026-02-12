@@ -13,16 +13,14 @@ test.describe('MCP Form', () => {
 	});
 
 	test('should display form with required fields', async ({ page }) => {
-		const modal = page.locator('.fixed.inset-0.z-50').first();
-
 		// Name field should be visible
 		const nameInput = page.locator('#name');
 		await expect(nameInput).toBeVisible();
 
-		// Type selector buttons should be visible (scoped to modal to avoid library filter buttons)
-		await expect(modal.getByRole('button', { name: 'stdio' })).toBeVisible();
-		await expect(modal.getByRole('button', { name: 'SSE' })).toBeVisible();
-		await expect(modal.getByRole('button', { name: 'HTTP' })).toBeVisible();
+		// Type selector buttons should be visible (these use full labels, not abbreviations)
+		await expect(page.getByRole('button', { name: /Standard I\/O/i })).toBeVisible();
+		await expect(page.getByRole('button', { name: /Server-Sent Events/i })).toBeVisible();
+		await expect(page.getByRole('button', { name: /HTTP\/REST/i })).toBeVisible();
 
 		// Command field should be visible for stdio (default)
 		await expect(page.locator('#command')).toBeVisible();
@@ -42,9 +40,8 @@ test.describe('MCP Form', () => {
 	});
 
 	test('should show URL field when switching to SSE type', async ({ page }) => {
-		const modal = page.locator('.fixed.inset-0.z-50').first();
-		// Click SSE type button (scoped to modal to avoid library filter buttons)
-		await modal.getByRole('button', { name: 'SSE' }).click();
+		// Click SSE type button (use full label to avoid matching library filter)
+		await page.getByRole('button', { name: /Server-Sent Events/i }).click();
 		await page.waitForTimeout(100);
 
 		// URL should now be visible
@@ -55,9 +52,8 @@ test.describe('MCP Form', () => {
 	});
 
 	test('should show URL and headers fields when switching to HTTP type', async ({ page }) => {
-		const modal = page.locator('.fixed.inset-0.z-50').first();
-		// Click HTTP type button (scoped to modal to avoid library filter buttons)
-		await modal.getByRole('button', { name: 'HTTP' }).click();
+		// Click HTTP type button (use full label to avoid matching library filter)
+		await page.getByRole('button', { name: /HTTP\/REST/i }).click();
 		await page.waitForTimeout(100);
 
 		// URL should be visible
@@ -103,12 +99,11 @@ test.describe('MCP Form', () => {
 	});
 
 	test('should validate required URL for SSE type', async ({ page }) => {
-		const modal = page.locator('.fixed.inset-0.z-50').first();
 		// Fill valid name
 		await page.fill('#name', 'my-mcp');
 
-		// Switch to SSE (scoped to modal)
-		await modal.getByRole('button', { name: 'SSE' }).click();
+		// Switch to SSE
+		await page.getByRole('button', { name: /Server-Sent Events/i }).click();
 		await page.waitForTimeout(100);
 
 		// Try to submit without URL
@@ -119,12 +114,11 @@ test.describe('MCP Form', () => {
 	});
 
 	test('should validate URL format for SSE/HTTP types', async ({ page }) => {
-		const modal = page.locator('.fixed.inset-0.z-50').first();
 		// Fill valid name
 		await page.fill('#name', 'my-mcp');
 
-		// Switch to SSE (scoped to modal)
-		await modal.getByRole('button', { name: 'SSE' }).click();
+		// Switch to SSE
+		await page.getByRole('button', { name: /Server-Sent Events/i }).click();
 		await page.waitForTimeout(100);
 
 		// Fill invalid URL
@@ -152,12 +146,11 @@ test.describe('MCP Form', () => {
 	});
 
 	test('should accept valid SSE MCP form', async ({ page }) => {
-		const modal = page.locator('.fixed.inset-0.z-50').first();
 		// Fill valid data
 		await page.fill('#name', 'test-sse-mcp');
 
-		// Switch to SSE (scoped to modal)
-		await modal.getByRole('button', { name: 'SSE' }).click();
+		// Switch to SSE
+		await page.getByRole('button', { name: /Server-Sent Events/i }).click();
 		await page.waitForTimeout(100);
 
 		await page.fill('#url', 'https://api.example.com/sse');
@@ -190,9 +183,8 @@ test.describe('MCP Form - Edit Mode', () => {
 		// Wait for MCPs to load
 		await page.waitForTimeout(500);
 
-		// Find an MCP card and look for an edit button (usually a pencil icon or "Edit" text)
-		// The edit button is typically in a dropdown or directly on the card
-		const mcpCard = page.locator('text=filesystem').first().locator('..').locator('..');
+		// Find an MCP card by its heading text
+		const mcpCard = page.locator('h3:has-text("filesystem")').first().locator('..').locator('..');
 
 		// Look for edit button or menu
 		const editButton = mcpCard.locator('button[aria-label*="edit" i], button:has-text("Edit")').first();
