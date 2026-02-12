@@ -38,8 +38,8 @@ test.describe('Projects Page', () => {
 		// Wait for projects to load
 		await page.waitForTimeout(500);
 
-		// Click on a project
-		await page.click('text=test-project');
+		// Click on a project (use heading to avoid matching path text)
+		await page.getByRole('heading', { name: 'test-project' }).first().click();
 
 		// Should open a modal or detail view
 		await page.waitForTimeout(200);
@@ -71,7 +71,7 @@ test.describe('Projects - Search and Filter', () => {
 			await page.waitForTimeout(200);
 
 			// Should show matching project
-			await expect(page.locator('text=test-project')).toBeVisible();
+			await expect(page.getByRole('heading', { name: 'test-project' })).toBeVisible();
 		}
 	});
 });
